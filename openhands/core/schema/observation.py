@@ -78,3 +78,8 @@ class ObservationType(str, Enum):
     """Result of the evaluation pipeline verifying the generated report. The response is a boolean."""
     CREDIT_ERROR = 'credit_error'
     """Result of a credit check."""
+    ORCHESTRATOR_INITIALIZE_OBSERVATION = 'orchestrator_initialize_observation'
+    """Result of an orchestrator initialization, containing the full ledger and context."""
+
+    ORCHESTRATOR_FINAL_OBSERVATION = 'orchestrator_final_observation'
+    """Result of an orchestrator final answer, containing the completed task's final answer."""

@@ -23,6 +23,8 @@ from litellm.exceptions import (  # noqa
 )
 
 from openhands.a2a.A2AManager import A2AManager
+from openhands.a2a.common.types import TaskState, TaskStatusUpdateEvent
+from openhands.a2a.task_event_handler import TaskEventHandler
 from openhands.controller.agent import Agent
 from openhands.controller.replay import ReplayManager
 from openhands.controller.state.state import State, TrafficControlState
@@ -424,7 +426,7 @@ class AgentController:
                 isinstance(event, A2ASendTaskUpdateObservation)
                 and not event.task_update_event['final']
             ):
-                return False
+                return TaskEventHandler.should_step_on_task_update(event)
             if isinstance(event, A2ASendTaskArtifactObservation):
                 return False
             if isinstance(event, ReportVerificationObservation):
@@ -565,6 +567,10 @@ class AgentController:
             if len(self._concurrent_pending_actions) == 0:
                 self._pending_action = None
             return
+        if isinstance(observation, A2ASendTaskUpdateObservation):
+            task_update_event = TaskStatusUpdateEvent(**observation.task_update_event)
+            if task_update_event.status.state == TaskState.INPUT_REQUIRED:
+                await self.set_agent_state_to(AgentState.AWAITING_USER_INPUT)
         elif isinstance(observation, ErrorObservation):
             if self.state.agent_state == AgentState.ERROR:
                 self.state.metrics.merge(self.state.local_metrics)

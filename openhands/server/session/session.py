@@ -164,7 +164,7 @@ class Session:
             )
 
         agent_config = self.config.get_agent_config(agent_cls)
-        self.logger.info(f'Enabling default condenser: {agent_config.condenser}')
+        # self.logger.info(f'Enabling default condenser: {agent_config.condenser}')
         if settings.enable_default_condenser and agent_config.condenser.type == 'noop':
             default_condenser_config = CondenserPipelineConfig(
                 condensers=[
