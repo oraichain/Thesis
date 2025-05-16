@@ -95,6 +95,7 @@ class EventStore(EventStoreABC):
         end_id: int | None = None,
         reverse: bool = False,
         filter: EventFilter | None = None,
+        limit: int | None = None,
     ) -> Iterable[Event]:
         """
         Retrieve events from the event stream, optionally filtering out events of a given type
