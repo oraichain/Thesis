@@ -31,8 +31,8 @@ class ConversationModule:
     async def _get_conversation_by_id(self, conversation_id: str):
         try:
             query = Conversation.select().where(
-                Conversation.c.conversation_id
-                == conversation_id & (Conversation.c.status != 'deleted')
+                (Conversation.c.conversation_id == conversation_id)
+                & (Conversation.c.status != 'deleted')
             )
             existing_record = await database.fetch_one(query)
             return existing_record
