@@ -45,14 +45,23 @@ def save_checkpoint(timestamp):
 
 
 def get_migrated_conversations_ids(start_date: datetime.datetime):
+    """
+    Get IDs of conversations that have already been migrated to the database.
+
+    This function fetches conversations that were created at or before the checkpoint time,
+    as these are the ones we've already processed in previous migration runs.
+    """
     with db_pool.get_connection_context() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                'SELECT conversation_id FROM conversations WHERE created_at >= %s',
+                'SELECT conversation_id FROM conversations WHERE created_at <= %s',
                 (start_date,),
             )
             ids = [row[0] for row in cursor.fetchall()]
             migrated_conversations_ids.update(ids)
+            logger.info(
+                f'Found {len(ids)} conversations already migrated before {start_date}'
+            )
 
 
 def should_migrate_conversation(conversation_dir, last_checkpoint):
