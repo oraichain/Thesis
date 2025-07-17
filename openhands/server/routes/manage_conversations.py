@@ -49,6 +49,7 @@ from openhands.server.thesis_auth import (
     create_thread,
     delete_thread,
     get_thread_by_id,
+    space_get_config_section,
 )
 from openhands.server.types import LLMAuthenticationError, MissingSettingsError
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
@@ -73,6 +74,7 @@ class InitSessionRequest(BaseModel):
     space_id: int | None = None
     thread_follow_up: int | None = None
     followup_discover_id: str | None = None
+    space_section_id: int | None = None
 
 
 class ChangeVisibilityRequest(BaseModel):
@@ -235,10 +237,24 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     bearer_token = request.headers.get('Authorization')
     x_device_id = request.headers.get('x-device-id')
     followup_discover_id = data.followup_discover_id
+    space_section_id = data.space_section_id
+    mcp_disable = data.mcp_disable
 
     try:
         knowledge_base = None
         raw_followup_conversation_id = None
+        if space_section_id:
+            section_config = await space_get_config_section(space_section_id)
+            if section_config:
+                if initial_user_msg is None:
+                    initial_user_msg = section_config['chartPrompt']
+                else:
+                    initial_user_msg = (
+                        initial_user_msg + '\n\n' + section_config['chartPrompt']
+                    )
+                mcp_disable = section_config['mcpDisable']
+                knowledge_base = section_config['knowledge']
+
         # if space_id or thread_follow_up:
         #     knowledge_base = await search_knowledge(
         #         initial_user_msg, space_id, thread_follow_up, user_id
@@ -264,7 +280,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             mnemonic=mnemonic,
-            mcp_disable=data.mcp_disable,
+            mcp_disable=mcp_disable,
             research_mode=data.research_mode,
             knowledge_base=knowledge_base,
             space_id=space_id,
@@ -355,6 +371,9 @@ async def search_conversations(
     keyword: str | None = None,
 ) -> ConversationInfoResultSet:
     user_id = get_user_id(request)
+    conversation_store = await ConversationStoreImpl.get_instance(
+        config, user_id, get_github_user_id(request)
+    )
 
     # get conversation visibility by user id
     visible_conversations = (
@@ -364,75 +383,27 @@ async def search_conversations(
     )
     if len(visible_conversations['items']) == 0:
         return ConversationInfoResultSet(results=[], next_page_id=None)
+    visible_conversation_ids = [
+        conversation['conversation_id']
+        for conversation in visible_conversations['items']
+    ]
 
-    # Check if using database file store
-    if config.file_store == 'database':
-        # Use conversation records directly to create metadata objects
-        filtered_results = []
-        for conversation in visible_conversations['items']:
-            try:
-                # Support both dict and object
-                conversation_id = getattr(
-                    conversation, 'conversation_id', None
-                ) or conversation.get('conversation_id')
-                title = getattr(conversation, 'title', None) or conversation.get(
-                    'title', ''
-                )
-                user_id = getattr(conversation, 'user_id', None) or conversation.get(
-                    'user_id'
-                )
-                created_at = getattr(
-                    conversation, 'created_at', None
-                ) or conversation.get('created_at')
-
-                conversation_metadata = ConversationMetadata(
-                    conversation_id=conversation_id,
-                    title=title,
-                    user_id=user_id,
-                    github_user_id=None,
-                    selected_repository=None,
-                    selected_branch=None,
-                    created_at=created_at,
-                    last_updated_at=created_at,
-                )
-                filtered_results.append(conversation_metadata)
-            except Exception as e:
-                logger.error(
-                    f'Error creating metadata for conversation {conversation_id}: {e}'
-                )
-                continue
-    else:
-        # Use existing file-based approach
-        conversation_store = await ConversationStoreImpl.get_instance(
-            config, user_id, get_github_user_id(request)
-        )
-
-        visible_conversation_ids = [
-            getattr(conversation, 'conversation_id', None)
-            or conversation.get('conversation_id')
-            for conversation in visible_conversations['items']
-        ]
-
-        conversation_metadata_result_set = await conversation_store.search(
-            page_id, limit, filter_conversation_ids=visible_conversation_ids
-        )
-
-        # Filter out conversations older than max_age
-        now = datetime.now(timezone.utc)
-        max_age = config.conversation_max_age_seconds
-        filtered_results = [
-            conversation
-            for conversation in conversation_metadata_result_set.results
-            if hasattr(conversation, 'created_at')
-            and (
-                now - conversation.created_at.replace(tzinfo=timezone.utc)
-            ).total_seconds()
-            <= max_age
-        ]
+    conversation_metadata_result_set = await conversation_store.search(
+        page_id, limit, filter_conversation_ids=visible_conversation_ids
+    )
+    # Filter out conversations older than max_age
+    now = datetime.now(timezone.utc)
+    max_age = config.conversation_max_age_seconds
+    filtered_results = [
+        conversation
+        for conversation in conversation_metadata_result_set.results
+        if hasattr(conversation, 'created_at')
+        and (now - conversation.created_at.replace(tzinfo=timezone.utc)).total_seconds()
+        <= max_age
+    ]
 
     conversation_ids = set(
-        getattr(conversation, 'conversation_id', None) or conversation.conversation_id
-        for conversation in filtered_results
+        conversation.conversation_id for conversation in filtered_results
     )
     running_conversations = await conversation_manager.get_running_agent_loops(
         get_user_id(request), set(conversation_ids)
@@ -441,15 +412,11 @@ async def search_conversations(
         results=await wait_all(
             _get_conversation_info(
                 conversation=conversation,
-                is_running=(
-                    getattr(conversation, 'conversation_id', None)
-                    or conversation.conversation_id
-                )
-                in running_conversations,
+                is_running=conversation.conversation_id in running_conversations,
             )
             for conversation in filtered_results
         ),
-        next_page_id=None,  # Database doesn't use page_id pagination
+        next_page_id=conversation_metadata_result_set.next_page_id,
         total=visible_conversations['total'],
     )
     return result
