@@ -2,11 +2,13 @@ import json
 from dataclasses import dataclass
 from typing import Iterable
 
+from openhands.core.config import load_app_config
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
 from openhands.events.event_filter import EventFilter
 from openhands.events.event_store_abc import EventStoreABC
 from openhands.events.serialization.event import event_from_dict
+from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 from openhands.storage.locations import (
     get_conversation_dir,
@@ -53,24 +55,38 @@ class EventStore(EventStoreABC):
     cache_size: int = 25
 
     def __post_init__(self) -> None:
+        config_app = load_app_config()
+
         if self.cur_id >= 0:
             return
-        events = []
-        try:
-            events_dir = get_conversation_events_dir(self.sid, self.user_id)
-            events = self.file_store.list(events_dir)
-        except FileNotFoundError:
-            logger.debug(f'No events found for session {self.sid} at {events_dir}')
+        if config_app.file_store == 'database':
+            self.cur_id = db_file_store._get_latest_event_id(self.sid)
+        else:
+            events = []
+            try:
+                events_dir = get_conversation_events_dir(self.sid, self.user_id)
+                events = self.file_store.list(events_dir)
+            except FileNotFoundError:
+                logger.debug(f'No events found for session {self.sid} at {events_dir}')
+                events = []
 
-        if not events:
-            self.cur_id = 0
-            return
+            # if self.user_id:
+            #     # During transition to new location, try old location if user_id is set
+            #     # TODO: remove this code after 5/1/2025
+            #     try:
+            #         events_dir = get_conversation_events_dir(self.sid)
+            #         events += self.file_store.list(events_dir)
+            #     except FileNotFoundError:
+            #         logger.debug(f'No events found for session {self.sid} at {events_dir}')
 
-        # if we have events, we need to find the highest id to prepare for new events
-        for event_str in events:
-            id = self._get_id_from_filename(event_str)
-            if id >= self.cur_id:
-                self.cur_id = id + 1
+            if not events:
+                self.cur_id = 0
+                return
+            # if we have events, we need to find the highest id to prepare for new events
+            for event_str in events:
+                id = self._get_id_from_filename(event_str)
+                if id >= self.cur_id:
+                    self.cur_id = id + 1
 
     def search_events(
         self,
@@ -94,38 +110,55 @@ class EventStore(EventStoreABC):
             Events from the stream that match the criteria.
         """
 
+        def should_filter(event: Event) -> bool:
+            if filter and hasattr(event, 'hidden') and event.hidden:
+                return True
+            if filter is not None and filter.include(event):
+                return True
+            return False
+
+        config_app = load_app_config()
+
         if end_id is None:
             end_id = self.cur_id
         else:
             end_id += 1  # From inclusive to exclusive
 
-        if reverse:
-            step = -1
-            start_id, end_id = end_id, start_id
-            start_id -= 1
-            end_id -= 1
+        if config_app.file_store == 'database':
+            events = db_file_store._get_events_from_start_id(self.sid, start_id)
+            for event_dict in events:
+                parsed_event = event_from_dict(event_dict)
+                if parsed_event and not should_filter(parsed_event):
+                    yield parsed_event
         else:
-            step = 1
+            cache_page = _DUMMY_PAGE
 
-        cache_page = _DUMMY_PAGE
-        num_results = 0
-        for index in range(start_id, end_id, step):
-            if not should_continue():
-                return
-            if not cache_page.covers(index):
-                cache_page = self._load_cache_page_for_index(index)
-            event = cache_page.get_event(index)
-            if event is None:
-                try:
-                    event = self.get_event(index)
-                except FileNotFoundError:
-                    event = None
-            if event:
-                if not filter or filter.include(event):
-                    yield event
-                    num_results += 1
-                    if limit and limit <= num_results:
-                        return
+            if reverse:
+                step = -1
+                start_id, end_id = end_id, start_id
+                start_id -= 1
+                end_id -= 1
+            else:
+                step = 1
+
+            for index in range(start_id, end_id, step):
+                if not should_continue():
+                    return
+                if not cache_page.covers(index):
+                    cache_page = self._load_cache_page_for_index(index)
+
+                # Get event from cache first
+                cached_event = cache_page.get_event(index)
+
+                if cached_event is None:
+                    try:
+                        cached_event = self.get_event(index)
+                    except FileNotFoundError:
+                        continue  # Skip to next iteration
+
+                # Only yield if we have a valid event and it passes the filter
+                if cached_event is not None and not should_filter(cached_event):
+                    yield cached_event
 
     def get_event(self, id: int) -> Event:
         filename = self._get_filename_for_id(id, self.user_id)

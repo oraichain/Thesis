@@ -93,6 +93,9 @@ async def list_files(request: Request, path: str | None = None):
     file_list = [f for f in file_list if f not in FILES_TO_IGNORE]
 
     async def filter_for_gitignore(file_list, base_path):
+        gitignore_filename = '.gitignore'
+        if gitignore_filename not in file_list:
+            return file_list
         gitignore_path = os.path.join(base_path, '.gitignore')
         try:
             read_action = FileReadAction(gitignore_path)
@@ -216,6 +219,11 @@ async def uploadImageFile(request: Request, data: UploadFileRequest):
         )
     if isinstance(observation, FileReadObservation):
         file_content = observation.content
+        if not file_content:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={'error': 'File not found'},
+            )
         try:
             # Handle different content formats
             if file_content.startswith('data:image/'):
@@ -270,8 +278,8 @@ async def uploadImageFile(request: Request, data: UploadFileRequest):
         )
     else:
         return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={'error': 'Failed to read image data'},
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={'error': 'File not found'},
         )
 
 
