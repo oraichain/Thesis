@@ -2,11 +2,13 @@ import json
 from dataclasses import dataclass
 from typing import Iterable
 
+from openhands.core.config import load_app_config
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
 from openhands.events.event_filter import EventFilter
 from openhands.events.event_store_abc import EventStoreABC
 from openhands.events.serialization.event import event_from_dict
+from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 from openhands.storage.locations import (
     get_conversation_dir,
@@ -112,6 +114,15 @@ class EventStore(EventStoreABC):
         """
         from openhands.core.config import load_app_config
         from openhands.storage.database import db_file_store
+
+        config_app = load_app_config()
+
+        def should_filter(event: Event) -> bool:
+            if filter and hasattr(event, 'hidden') and event.hidden:
+                return True
+            if filter is not None and filter.include(event):
+                return True
+            return False
 
         config_app = load_app_config()
 
