@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Iterable
 
+from openhands.core.config import load_app_config
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
 from openhands.events.serialization.event import event_from_dict, event_to_dict
@@ -107,6 +108,15 @@ class EventStore(EventStoreABC):
         Yields:
             Events from the stream that match the criteria.
         """
+
+        def should_filter(event: Event) -> bool:
+            if filter and hasattr(event, 'hidden') and event.hidden:
+                return True
+            if filter is not None and filter.include(event):
+                return True
+            return False
+
+        config_app = load_app_config()
 
         if end_id is None:
             end_id = self.cur_id

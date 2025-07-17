@@ -22,4 +22,6 @@ def get_file_store(file_store: str, file_store_path: str | None = None) -> FileS
         if file_store_path is None:
             raise ValueError('file_store_path is required for HTTP file store')
         return HTTPFileStore(file_store_path)
+    elif file_store == 'database':
+        return DatabaseFileStore()
     return InMemoryFileStore()
