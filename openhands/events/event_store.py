@@ -120,7 +120,7 @@ class EventStore(EventStoreABC):
         def should_filter(event: Event) -> bool:
             if filter and hasattr(event, 'hidden') and event.hidden:
                 return True
-            if filter is not None and filter.include(event):
+            if filter is not None and filter.exclude(event):
                 return True
             return False
 
@@ -131,12 +131,16 @@ class EventStore(EventStoreABC):
         else:
             end_id += 1  # From inclusive to exclusive
 
+        num_results = 0
         if config_app.file_store == 'database':
             events = db_file_store._get_events_from_start_id(self.sid, start_id)
             for event_dict in events:
                 parsed_event = event_from_dict(event_dict)
                 if parsed_event and not should_filter(parsed_event):
                     yield parsed_event
+                    num_results += 1
+                    if limit and limit <= num_results:
+                        return
         else:
             cache_page = _DUMMY_PAGE
 
@@ -153,19 +157,18 @@ class EventStore(EventStoreABC):
                     return
                 if not cache_page.covers(index):
                     cache_page = self._load_cache_page_for_index(index)
-
-                # Get event from cache first
-                cached_event = cache_page.get_event(index)
-
-                if cached_event is None:
+                event = cache_page.get_event(index)
+                if event is None:
                     try:
-                        cached_event = self.get_event(index)
+                        event = self.get_event(index)
                     except FileNotFoundError:
-                        continue  # Skip to next iteration
-
-                # Only yield if we have a valid event and it passes the filter
-                if cached_event is not None and not should_filter(cached_event):
-                    yield cached_event
+                        event = None
+                if event:
+                    if not filter or filter.include(event):
+                        yield event
+                        num_results += 1
+                        if limit and limit <= num_results:
+                            return
 
     def get_event(self, id: int) -> Event:
         filename = self._get_filename_for_id(id, self.user_id)
