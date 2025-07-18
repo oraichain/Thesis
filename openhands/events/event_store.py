@@ -4,11 +4,11 @@ from typing import Iterable
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
-from openhands.events.serialization.event import event_from_dict, event_to_dict
-from openhands.shared import config as shared_config
-from openhands.storage.database import db_file_store
 from openhands.events.event_filter import EventFilter
 from openhands.events.event_store_abc import EventStoreABC
+from openhands.events.serialization.event import event_from_dict
+from openhands.shared import config as shared_config
+from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 from openhands.storage.locations import (
     get_conversation_dir,
@@ -115,14 +115,12 @@ class EventStore(EventStoreABC):
                 return True
             return False
 
-        config_app = load_app_config()
-
         if end_id is None:
             end_id = self.cur_id
         else:
             end_id += 1  # From inclusive to exclusive
 
-        number_results = 0
+        num_results = 0
         if shared_config.file_store == 'database':
             events = db_file_store._get_events_from_start_id(self.sid, start_id)
             for event_dict in events:
