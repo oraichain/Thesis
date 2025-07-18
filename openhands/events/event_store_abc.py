@@ -110,5 +110,6 @@ class EventStoreABC:
                 start_date=start_date,
                 end_date=end_date,
             ),
+            limit=limit,
         )
         return list(islice(events, limit))
