@@ -2,13 +2,11 @@ import json
 from dataclasses import dataclass
 from typing import Iterable
 
-from openhands.core.config import load_app_config
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
 from openhands.events.event_filter import EventFilter
 from openhands.events.event_store_abc import EventStoreABC
 from openhands.events.serialization.event import event_from_dict
-from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 from openhands.storage.locations import (
     get_conversation_dir,
