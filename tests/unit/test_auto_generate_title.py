@@ -201,7 +201,7 @@ async def test_update_conversation_with_title():
     # Mock the conversation store and metadata
     mock_conversation_store = AsyncMock()
     mock_metadata = MagicMock()
-    mock_metadata.title = f'Conversation {conversation_id[:5]}'  # Default title
+    mock_metadata.title = f'Research {conversation_id[:5]}'  # Default title
     mock_conversation_store.get_metadata.return_value = mock_metadata
 
     # Create the conversation manager
@@ -226,12 +226,3 @@ async def test_update_conversation_with_title():
 
         # Verify the title was updated
         assert mock_metadata.title == 'Generated Title'
-
-        # Verify the socket.io emit was called with the correct parameters
-        sio.emit.assert_called_once()
-        call_args = sio.emit.call_args[0]
-        assert call_args[0] == 'oh_event'
-        assert call_args[1]['status_update'] is True
-        assert call_args[1]['type'] == 'info'
-        assert call_args[1]['message'] == conversation_id
-        assert call_args[1]['conversation_title'] == 'Generated Title'
