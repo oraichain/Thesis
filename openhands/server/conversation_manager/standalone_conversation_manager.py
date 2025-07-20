@@ -26,7 +26,6 @@ from openhands.storage.files import FileStore
 from openhands.utils.async_utils import (
     GENERAL_TIMEOUT,
     call_async_from_sync,
-    run_in_loop,
     wait_all,
 )
 from openhands.utils.conversation_summary import (
@@ -570,7 +569,7 @@ class StandaloneConversationManager(ConversationManager):
 
         default_title = get_default_conversation_title(conversation_id)
         if (
-            conversation.title == default_title
+            not conversation.title or conversation.title == default_title
         ):  # attempt to autogenerate if default title is in use
             title = await auto_generate_title(
                 conversation_id, user_id, self.file_store, settings
@@ -578,20 +577,8 @@ class StandaloneConversationManager(ConversationManager):
             if title and not title.isspace():
                 conversation.title = title
                 try:
-                    # Emit a status update to the client with the new title
-                    status_update_dict = {
-                        'status_update': True,
-                        'type': 'info',
-                        'message': conversation_id,
-                        'conversation_title': conversation.title,
-                    }
-                    await run_in_loop(
-                        self.sio.emit(
-                            'oh_event',
-                            status_update_dict,
-                            to=ROOM_KEY.format(sid=conversation_id),
-                        ),
-                        self._loop,  # type:ignore
+                    await conversation_module._update_title_conversation(
+                        conversation_id, title
                     )
                 except Exception as e:
                     logger.error(f'Error emitting title update event: {e}')

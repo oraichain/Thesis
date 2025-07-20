@@ -81,7 +81,7 @@ def get_default_conversation_title(conversation_id: str) -> str:
     Returns:
         A default title string
     """
-    return f'Conversation {conversation_id[:5]}'
+    return f'Research {conversation_id[:5]}'
 
 
 async def auto_generate_title(
