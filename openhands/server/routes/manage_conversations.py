@@ -50,6 +50,7 @@ from openhands.server.types import LLMAuthenticationError, MissingSettingsError
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
 from openhands.storage.data_models.conversation_status import ConversationStatus
 from openhands.utils.async_utils import wait_all
+from openhands.utils.conversation_summary import get_default_conversation_title
 from openhands.utils.get_user_setting import get_user_setting
 
 app = APIRouter(prefix='/api')
@@ -483,19 +484,6 @@ async def get_conversation(
         return None
 
 
-def get_default_conversation_title(conversation_id: str) -> str:
-    """
-    Generate a default title for a conversation based on its ID.
-
-    Args:
-        conversation_id: The ID of the conversation
-
-    Returns:
-        A default title string
-    """
-    return f'Research {conversation_id[:5]}'
-
-
 @app.patch('/conversations/{conversation_id}')
 async def update_conversation(
     request: Request, conversation_id: str, title: str | None = Body(embed=True)
@@ -539,19 +527,17 @@ async def update_conversation(
                 status_code=status.HTTP_403_FORBIDDEN,
             )
 
-        current_metadata_title = metadata.title
-        if not metadata.title:
-            metadata.title = get_default_conversation_title(conversation_id)
+        # current_metadata_title = metadata.title
+        # if not metadata.title:
+        #     metadata.title = get_default_conversation_title(conversation_id)
 
         # If title is empty or unspecified, auto-generate it
         if title:
             metadata.title = title
-        if current_metadata_title != metadata.title:
             await conversation_store.save_metadata(metadata)
-
-        await conversation_module._update_title_conversation(
-            conversation_id, metadata.title
-        )
+            await conversation_module._update_title_conversation(
+                conversation_id, metadata.title
+            )
         return True
     except FileNotFoundError:
         logger.warning(
