@@ -100,11 +100,11 @@ async def get_user_detail_from_thesis_auth_server(
 
 
 async def get_system_prompt_from_thesis_auth_server(
-    space_id: int,
+    conversation_id: str,
     bearer_token: str,
     x_device_id: str | None = None,
 ) -> str | None:
-    url = f'/api/spaces/{space_id}/system-prompt'
+    url = f'/api/spaces/{conversation_id}/system-prompt'
     headers = {'Content-Type': 'application/json', 'Authorization': bearer_token}
     if x_device_id:
         headers['x-device-id'] = x_device_id
