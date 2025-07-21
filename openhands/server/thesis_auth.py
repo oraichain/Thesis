@@ -114,10 +114,7 @@ async def get_system_prompt_from_thesis_auth_server(
             logger.error(
                 f'Failed to get system prompt: {response.status_code} - {response.text}'
             )
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=response.json().get('error', 'Unknown error'),
-            )
+            return None
         return response.json()['data']
     except httpx.RequestError as exc:
         logger.error(f'Request error while getting system prompt: {str(exc)}')
