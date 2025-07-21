@@ -139,6 +139,7 @@ class AgentController:
     user_id: str | None = None
     raw_followup_conversation_id: str | None = None
     followup_conversation_events: list[dict] = []
+    space_section_id: int | None = None
 
     def __init__(
         self,
@@ -160,6 +161,7 @@ class AgentController:
         thread_follow_up: int | None = None,
         user_id: str | None = None,
         raw_followup_conversation_id: str | None = None,
+        space_section_id: int | None = None,
     ):
         """Initializes a new instance of the AgentController class.
 
@@ -220,6 +222,7 @@ class AgentController:
         self.user_id = user_id
         self.raw_followup_conversation_id = raw_followup_conversation_id
         self.followup_conversation_events = []
+        self.space_section_id = space_section_id
         print(f'raw_followup_conversation_id: {self.raw_followup_conversation_id}')
 
     async def close(self, set_stop_state=True) -> None:
@@ -654,6 +657,7 @@ class AgentController:
             return []
 
     async def _search_knowledge(self, query: str):
+        print(f'self.space_section_id--->laal: {self.space_section_id}')
         if self.user_id and (self.space_id or self.thread_follow_up):
             knowledge_base = await search_knowledge_mem0(
                 query,
@@ -669,6 +673,7 @@ class AgentController:
                     self.space_id,
                     self.thread_follow_up,
                     self.user_id,
+                    self.space_section_id,
                 )
                 if knowledge_base and len(knowledge_base) > 0:
                     self.agent.update_agent_knowledge_base(knowledge_base)
