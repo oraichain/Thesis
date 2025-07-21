@@ -277,6 +277,32 @@ async def create_thread(
         )
 
 
+async def space_get_config_section(
+    section_id: int,
+) -> dict | None:
+    url = f'/api/spaces/section/get-config-section/{section_id}'
+    headers = {
+        'Content-Type': 'application/json',
+        'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
+    }
+    try:
+        response = await thesis_auth_client.get(url, headers=headers)
+        await handle_api_response(response, 'Get config section')
+        data = response.json()['data']
+        return data
+    except httpx.RequestError as exc:
+        logger.error(f'Connection error getting config section: {str(exc)}')
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='Could not connect to section server',
+        )
+    except Exception as e:
+        logger.exception('Unexpected error getting config section')
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
 async def search_knowledge(
     question: str | None = None,
     space_id: int | None = None,
