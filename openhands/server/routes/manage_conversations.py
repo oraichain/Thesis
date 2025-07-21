@@ -101,6 +101,7 @@ async def _create_new_conversation(
     space_id: int | None = None,
     thread_follow_up: int | None = None,
     raw_followup_conversation_id: str | None = None,
+    space_section_id: int | None = None,
 ):
     logger.info(
         'Creating conversation',
@@ -206,6 +207,7 @@ async def _create_new_conversation(
         thread_follow_up=thread_follow_up,
         research_mode=research_mode,
         raw_followup_conversation_id=raw_followup_conversation_id,
+        space_section_id=space_section_id,
     )
     logger.info(f'Finished initializing conversation {conversation_id}')
 
@@ -251,7 +253,6 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                         initial_user_msg + '\n\n' + section_config['chartPrompt']
                     )
                 mcp_disable = section_config['mcpDisable']
-                knowledge_base = section_config['knowledge']
 
         # if space_id or thread_follow_up:
         #     knowledge_base = await search_knowledge(
@@ -284,6 +285,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
             space_id=space_id,
             thread_follow_up=thread_follow_up,
             raw_followup_conversation_id=raw_followup_conversation_id,
+            space_section_id=space_section_id,
         )
 
         end_time = time.time()
