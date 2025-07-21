@@ -305,6 +305,7 @@ async def search_knowledge(
     space_id: int | None = None,
     thread_follow_up: int | None = None,
     user_id: str | None = None,
+    space_section_id: int | None = None,
 ) -> list[dict] | None:
     url = '/api/knowledge/search'
     payload = {'question': question}
@@ -314,7 +315,8 @@ async def search_knowledge(
         payload['threadId'] = str(thread_follow_up)
     if user_id:
         payload['publicAddress'] = user_id
-
+    if space_section_id:
+        payload['spaceSectionId'] = str(space_section_id)
     headers = {
         'Content-Type': 'application/json',
         'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),

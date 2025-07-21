@@ -139,6 +139,7 @@ class StandaloneConversationManager(ConversationManager):
         thread_follow_up: int | None = None,
         research_mode: str | None = None,
         raw_followup_conversation_id: str | None = None,
+        space_section_id: int | None = None,
     ) -> EventStore:
         logger.info(
             f'join_conversation:{sid}:{connection_id}',
@@ -162,6 +163,7 @@ class StandaloneConversationManager(ConversationManager):
             thread_follow_up=thread_follow_up,
             research_mode=research_mode,
             raw_followup_conversation_id=raw_followup_conversation_id,
+            space_section_id=space_section_id,
         )
         if not event_stream:
             logger.error(
@@ -301,6 +303,7 @@ class StandaloneConversationManager(ConversationManager):
         thread_follow_up: int | None = None,
         research_mode: str | None = None,
         raw_followup_conversation_id: str | None = None,
+        space_section_id: int | None = None,
     ) -> EventStore:
         logger.info(f'maybe_start_agent_loop:{sid}', extra={'session_id': sid})
         session: Session | None = None
@@ -332,7 +335,7 @@ class StandaloneConversationManager(ConversationManager):
                     )
                     raise RuntimeError(f'no_event_stream:{sid}')
                 return event_store
-
+            print(f'space_section_id--->session: {space_section_id}')
             session = Session(
                 sid=sid,
                 file_store=self.file_store,
@@ -342,6 +345,7 @@ class StandaloneConversationManager(ConversationManager):
                 space_id=space_id,
                 thread_follow_up=thread_follow_up,
                 raw_followup_conversation_id=raw_followup_conversation_id,
+                space_section_id=space_section_id,
             )
             self._local_agent_loops_by_sid[sid] = session
             asyncio.create_task(
