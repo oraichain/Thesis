@@ -73,11 +73,10 @@ async def connect(connection_id: str, environ):
     # providers_raw: list[str] = query_params.get('providers_set', [])
     # providers_set: list[ProviderType] = [ProviderType(p) for p in providers_raw]
 
-    space_id = query_params.get('space_id', [None])[0]
-    if space_id is not None and jwt_token is not None:
+    if conversation_id is not None and jwt_token is not None:
         # get system prompt from thesis auth server
         system_prompt = await get_system_prompt_from_thesis_auth_server(
-            int(space_id), 'Bearer ' + (jwt_token or ''), x_device_id
+            conversation_id, 'Bearer ' + (jwt_token or ''), x_device_id
         )
         logger.info(f'system_prompt: {system_prompt}')
     else:
