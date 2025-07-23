@@ -161,6 +161,7 @@ class StandaloneConversationManager(ConversationManager):
         research_mode: str | None = None,
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
+        output_config: dict | None = None,
     ) -> EventStore:
         logger.info(
             f'join_conversation:{sid}:{connection_id}',
@@ -185,6 +186,7 @@ class StandaloneConversationManager(ConversationManager):
             research_mode=research_mode,
             raw_followup_conversation_id=raw_followup_conversation_id,
             space_section_id=space_section_id,
+            output_config=output_config,
         )
         if not event_stream:
             logger.error(
@@ -325,6 +327,7 @@ class StandaloneConversationManager(ConversationManager):
         research_mode: str | None = None,
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
+        output_config: dict | None = None,
     ) -> EventStore:
         logger.info(f'maybe_start_agent_loop:{sid}', extra={'session_id': sid})
         session: Session | None = None
@@ -380,6 +383,7 @@ class StandaloneConversationManager(ConversationManager):
                     mcp_disable=mcp_disable,
                     knowledge_base=knowledge_base,
                     research_mode=research_mode,
+                    output_config=output_config,
                 )
             )
             # This does not get added when resuming an existing conversation

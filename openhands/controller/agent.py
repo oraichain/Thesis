@@ -58,6 +58,7 @@ class Agent(ABC):
         self.session_id: str | None = kwargs.get('session_id', None)
         self.enable_streaming: bool = kwargs.get('enable_streaming', False)
         self.streaming_llm: StreamingLLM | None = None
+        self.output_config: dict | None = kwargs.get('output_config', None)
 
     @property
     def complete(self) -> bool:
@@ -164,6 +165,14 @@ class Agent(ABC):
         - user_prompt (str): The user prompt.
         """
         self.user_prompt = user_prompt
+
+    def set_output_config(self, output_config: dict) -> None:
+        """Set the output config for the agent.
+
+        Args:
+        - output_config (dict): The output config.
+        """
+        self.output_config = output_config
 
     def update_agent_knowledge_base(
         self, knowledge_base: list[dict] | None = None

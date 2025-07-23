@@ -774,6 +774,11 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
+        user_context = self._handle_format_output()
+        if user_context:
+            messages.append(
+                Message(role='user', content=[TextContent(text=user_context)])
+            )
         # Use ConversationMemory to process events
         messages = self.conversation_memory.process_events(
             condensed_history=events,
@@ -781,7 +786,6 @@ class CodeActAgent(Agent):
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
         )
-
         messages = self._enhance_messages(messages)
 
         if self.llm.is_caching_prompt_active():
@@ -826,3 +830,15 @@ class CodeActAgent(Agent):
             prev_role = msg.role
 
         return results
+
+    def _handle_format_output(self) -> str:
+        if self.output_config:
+            if 'output_type' in self.output_config:
+                if self.output_config['output_type'] == 'json':
+                    return f"Please return final output in json format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}. Don't try to write the report, just give me the json format."
+                elif self.output_config['output_type'] == 'text':
+                    return f"Please return final output in text format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}."
+
+            if 'Prompt' in self.output_config:
+                return self.output_config['Prompt']
+        return ''
