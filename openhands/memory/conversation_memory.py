@@ -158,7 +158,8 @@ class ConversationMemory:
                 role='system',
                 content=[
                     TextContent(
-                        text=self.prompt_manager.get_followup_mode_message(
+                        text=self.prompt_manager.system_prompt
+                        or self.prompt_manager.get_followup_mode_message(
                             **kwargs,
                         ),
                         cache_prompt=with_caching,
@@ -175,7 +176,8 @@ class ConversationMemory:
                 role='system',
                 content=[
                     TextContent(
-                        text=self.prompt_manager.get_chat_mode_message(
+                        text=self.prompt_manager.system_prompt
+                        or self.prompt_manager.get_chat_mode_message(
                             **kwargs,
                         ),
                         cache_prompt=with_caching,
