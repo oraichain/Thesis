@@ -241,7 +241,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     followup_discover_id = data.followup_discover_id
     space_section_id = data.space_section_id
     mcp_disable = data.mcp_disable
-    output_config = None
+    output_config: dict | None = None
     try:
         knowledge_base = None
         raw_followup_conversation_id = None
@@ -255,10 +255,11 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                 #         initial_user_msg + '\n\n' + section_config['chartPrompt']
                 #     )
                 mcp_disable = section_config['mcpDisable']
-                output_config = {
-                    'prompt': section_config['chartPrompt'],
-                    'output': section_config['outputConfig'],
-                }
+                if 'chartPrompt' in section_config:
+                    output_config = {
+                        'prompt': section_config['chartPrompt'],
+                        'output': section_config['outputConfig'],
+                    }
 
         # if space_id or thread_follow_up:
         #     knowledge_base = await search_knowledge(
