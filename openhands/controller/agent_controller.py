@@ -80,6 +80,11 @@ from openhands.events.observation.a2a import (
 )
 from openhands.events.observation.credit import CreditErrorObservation
 from openhands.events.serialization.event import (
+    _extract_content_from_event,
+    _extract_file_text_from_tool_call,
+    _extract_from_edit_event,
+    _extract_from_finish_event,
+    _extract_from_message_event,
     event_to_dict,
     event_to_trajectory,
     truncate_content,
@@ -88,8 +93,6 @@ from openhands.llm.llm import LLM
 from openhands.llm.metrics import Metrics
 from openhands.server.mem0 import (
     _db_pool_instance,
-    _extract_content_from_event,
-    _extract_file_text_from_tool_call,
     process_single_event_for_mem0,
     search_knowledge_mem0,
 )
@@ -865,6 +868,10 @@ class AgentController:
             EventSource.ENVIRONMENT,
         )
 
+        # Extract and save final JSON result when agent finishes or awaits user input
+        if new_state in (AgentState.FINISHED, AgentState.AWAITING_USER_INPUT):
+            await self._extract_and_save_final_result(self.id)
+
     def get_agent_state(self) -> AgentState:
         """Returns the current state of the agent.
 
@@ -1232,6 +1239,138 @@ class AgentController:
             stop_step = True
 
         return stop_step
+
+    async def _extract_and_save_final_result(self, session_id: str) -> None:
+        """
+        Extract final result from the conversation and save it to database.
+        Called when agent state changes to FINISHED or AWAITING_USER_INPUT.
+        Uses similar logic to process_single_event_for_mem0 to extract content.
+        """
+        try:
+            # Get recent events from the event stream to find the final result
+            recent_events = list(
+                self.event_stream.get_events(
+                    filter_out_type=(),
+                    filter_hidden=False,
+                    limit=10,
+                    order_by='created_at',
+                )
+            )
+
+            final_result = None
+            finish_events = []
+            edit_events = []
+            message_events = []
+            for event in recent_events:
+                event_dict = None
+                try:
+                    event_dict = event_to_dict(event)
+                except Exception:
+                    continue
+
+                source = event_dict.get('source')
+                action = event_dict.get('action')
+
+                if source == 'agent':
+                    if action == 'finish':
+                        finish_events.append(event_dict)
+                    elif action == 'edit':
+                        edit_events.append(event_dict)
+                    elif _extract_content_from_event(event_dict):
+                        message_events.append(event_dict)
+
+            if edit_events:
+                self.log('info', 'Prioritizing edit events for final result extraction')
+                for event_dict in (
+                    edit_events
+                ):  # edit_events are already in reverse order (newest first)
+                    result = _extract_from_edit_event(event_dict)
+                    if result:
+                        final_result = result
+                        break
+
+            # If no edit events or couldn't extract from edit, try finish events
+            if not final_result and finish_events:
+                self.log('info', 'Trying finish events for final result extraction')
+                for event_dict in finish_events:
+                    result = _extract_from_finish_event(event_dict)
+                    if result:
+                        final_result = result
+                        break
+
+            # If still no result, try message events
+            if not final_result and message_events:
+                self.log('info', 'Trying message events for final result extraction')
+                for event_dict in (
+                    message_events
+                ):  # message_events are already in reverse order (newest first)
+                    result = _extract_from_message_event(event_dict)
+                    if result:
+                        final_result = result
+                        break
+
+            # Save the final result to database
+            if final_result:
+                await self._save_final_result_to_database(session_id, final_result)
+            else:
+                self.log('debug', 'No final result found in recent messages')
+
+        except Exception as e:
+            self.log('error', f'Error extracting final result: {str(e)}')
+
+    async def _save_final_result_to_database(
+        self, session_id: str, final_result: str
+    ) -> None:
+        """
+        Save the final result directly to the database as a new column.
+        """
+        try:
+            # Use the existing _db_pool_instance pattern from mem0 integration
+            conn = None
+            try:
+                conn = _db_pool_instance.get_connection()
+                if not conn:
+                    self.log('error', 'Failed to get database connection from pool')
+                    return
+
+                cursor = conn.cursor()
+
+                # Update the conversations table with final_result
+                cursor.execute(
+                    """
+                    UPDATE conversations
+                    SET final_result = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE conversation_id = %s
+                    """,
+                    (final_result, session_id),
+                )
+
+                # If no rows were updated, log a warning but don't create new record
+                if cursor.rowcount == 0:
+                    self.log(
+                        'warning',
+                        f'No conversation found to update with session_id: {session_id}',
+                    )
+                else:
+                    self.log(
+                        'info',
+                        f'Successfully saved final result to database for session {session_id}',
+                    )
+
+                cursor.close()
+                conn.commit()
+
+            except Exception as e:
+                self.log('error', f'Error saving final result to database: {str(e)}')
+                if conn:
+                    conn.rollback()
+            finally:
+                # Always release the connection back to the pool
+                if conn:
+                    _db_pool_instance.release_connection(conn)
+
+        except Exception as e:
+            self.log('error', f'Error getting database connection: {str(e)}')
 
     async def force_finish(self, finish_reason: str) -> None:
         """

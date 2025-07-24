@@ -453,6 +453,20 @@ class DatabaseFileStore(FileStore):
                 )
                 return [event[0] for event in cursor.fetchall()]
 
+    def _get_events_with_filters(
+        self, conversation_id: str, filters: dict
+    ) -> List[dict]:
+        """Get events from conversation_events table by filters."""
+        with db_pool.get_connection_context() as conn:
+            with conn.cursor() as cursor:
+                order_by_clause = f"ORDER BY {filters.get('order_by', 'event_id')} DESC"
+                limit_clause = f"LIMIT {filters.get('limit', 100)}"
+                cursor.execute(
+                    f'SELECT metadata FROM conversation_events WHERE conversation_id = %s {order_by_clause} {limit_clause}',
+                    (conversation_id,),
+                )
+                return [event[0] for event in cursor.fetchall()]
+
     def _check_event_exists(self, conversation_id: str) -> bool:
         """Check if event exists in conversation_events table."""
         with db_pool.get_connection_context() as conn:

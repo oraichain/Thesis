@@ -110,6 +110,7 @@ class Session:
         mcp_disable: dict[str, bool] | None = None,
         knowledge_base: list[dict] | None = None,
         research_mode: str | None = None,
+        output_config: dict | None = None,
     ):
         # Lazy import to avoid circular import
 
@@ -231,6 +232,9 @@ class Session:
 
         if user_prompt:
             agent.set_user_prompt(user_prompt)
+
+        if output_config:
+            agent.set_output_config(output_config)
 
         git_provider_tokens = None
         selected_repository = None

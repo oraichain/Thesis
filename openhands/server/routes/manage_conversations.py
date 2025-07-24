@@ -106,6 +106,7 @@ async def _create_new_conversation(
     thread_follow_up: int | None = None,
     raw_followup_conversation_id: str | None = None,
     space_section_id: int | None = None,
+    output_config: dict | None = None,
 ):
     logger.info(
         'Creating conversation',
@@ -210,6 +211,7 @@ async def _create_new_conversation(
         research_mode=research_mode,
         raw_followup_conversation_id=raw_followup_conversation_id,
         space_section_id=space_section_id,
+        output_config=output_config,
     )
     logger.info(f'Finished initializing conversation {conversation_id}')
 
@@ -241,20 +243,25 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     followup_discover_id = data.followup_discover_id
     space_section_id = data.space_section_id
     mcp_disable = data.mcp_disable
-
+    output_config: dict | None = None
     try:
         knowledge_base = None
         raw_followup_conversation_id = None
         if space_section_id:
             section_config = await space_get_config_section(space_section_id)
             if section_config:
-                if initial_user_msg is None:
-                    initial_user_msg = section_config['chartPrompt']
-                else:
-                    initial_user_msg = (
-                        initial_user_msg + '\n\n' + section_config['chartPrompt']
-                    )
+                # if initial_user_msg is None:
+                #     initial_user_msg = section_config['chartPrompt']
+                # else:
+                #     initial_user_msg = (
+                #         initial_user_msg + '\n\n' + section_config['chartPrompt']
+                #     )
                 mcp_disable = section_config['mcpDisable']
+                if 'chartPrompt' in section_config:
+                    output_config = {
+                        'prompt': section_config['chartPrompt'],
+                        'output': section_config['outputConfig'],
+                    }
 
         # if space_id or thread_follow_up:
         #     knowledge_base = await search_knowledge(
@@ -288,6 +295,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
             thread_follow_up=thread_follow_up,
             raw_followup_conversation_id=raw_followup_conversation_id,
             space_section_id=space_section_id,
+            output_config=output_config,
         )
 
         end_time = time.time()
@@ -491,6 +499,17 @@ async def get_conversation(
         #     conversation_info.research_mode = existed_conversation.configs.get('research_mode', None)
         return conversation_info
     except FileNotFoundError:
+        return None
+
+
+@app.get('/conversations/{conversation_id}/final-result')
+async def get_final_result(conversation_id: str, request: Request) -> str | None:
+    try:
+        conversation = await conversation_module._get_conversation_by_id(
+            conversation_id
+        )
+        return conversation.final_result
+    except Exception:
         return None
 
 

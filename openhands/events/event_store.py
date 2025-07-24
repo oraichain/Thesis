@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
@@ -91,6 +91,8 @@ class EventStore:
         reverse: bool = False,
         filter_out_type: tuple[type[Event], ...] | None = None,
         filter_hidden: bool = False,
+        limit: Optional[int] = None,
+        order_by: Optional[str] = None,
     ) -> Iterable[Event]:
         """
         Retrieve events from the event stream, optionally filtering out events of a given type
@@ -120,7 +122,12 @@ class EventStore:
             end_id += 1  # From inclusive to exclusive
 
         if shared_config.file_store == 'database':
-            events = db_file_store._get_events_from_start_id(self.sid, start_id)
+            if limit and order_by:
+                events = db_file_store._get_events_with_filters(
+                    self.sid, {'limit': limit, 'order_by': order_by}
+                )
+            else:
+                events = db_file_store._get_events_from_start_id(self.sid, start_id)
             for event_dict in events:
                 parsed_event = event_from_dict(event_dict)
                 if parsed_event and not should_filter(parsed_event):

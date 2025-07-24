@@ -1,3 +1,4 @@
+import json
 from dataclasses import asdict
 from datetime import datetime
 from enum import Enum
@@ -222,3 +223,132 @@ def truncate_content(content: str, max_chars: int | None = None) -> str:
         + '\n[... Observation truncated due to length ...]\n'
         + content[-half:]
     )
+
+
+def _extract_content_from_event(event: dict) -> str | None:
+    """Extract the main content from an event (similar to mem0 logic)."""
+    content = event.get('message')
+    if not content:
+        args = event.get('args')
+        if args and isinstance(args, dict):
+            content = args.get('content')
+    if not content:
+        content = event.get('content')
+    return content
+
+
+def _extract_file_text_from_tool_call(tool_calls: list) -> str | None:
+    """Extract file_text from tool call arguments (similar to mem0 logic)."""
+    if tool_calls and 'function' in tool_calls[0]:
+        arguments_str = tool_calls[0]['function'].get('arguments')
+        if arguments_str:
+            try:
+                arguments_json = json.loads(arguments_str)
+                return arguments_json.get('file_text') or arguments_str
+            except Exception:
+                return arguments_str
+    return None
+
+
+def _extract_from_edit_event(event_dict: dict) -> str | None:
+    """Extract content from edit tool calls (str_replace_editor, etc.)."""
+    tool_call_metadata = event_dict.get('tool_call_metadata', {})
+    model_response = tool_call_metadata.get('model_response', {})
+    choices = model_response.get('choices', [])
+
+    if choices and 'message' in choices[0]:
+        message_obj = choices[0]['message']
+        tool_calls = message_obj.get('tool_calls', [])
+
+        # Extract file_text from edit tool calls
+        if tool_calls and 'function' in tool_calls[0]:
+            arguments_str = tool_calls[0]['function'].get('arguments')
+            if arguments_str:
+                try:
+                    arguments_json = json.loads(arguments_str)
+                    file_text = arguments_json.get('file_text', '')
+
+                    if file_text and len(file_text.strip()) > 10:
+                        # Try to extract JSON from file content first
+                        json_result = _try_extract_json(file_text)
+                        if json_result:
+                            result = json.dumps(json_result)
+                            return result
+                        else:
+                            # Use the file content as final result
+                            return file_text
+                except json.JSONDecodeError:
+                    pass
+    return None
+
+
+def _extract_from_finish_event(event_dict: dict) -> str | None:
+    """Extract content from finish action tool calls."""
+    tool_call_metadata = event_dict.get('tool_call_metadata', {})
+    model_response = tool_call_metadata.get('model_response', {})
+    choices = model_response.get('choices', [])
+
+    if choices and 'message' in choices[0]:
+        message_obj = choices[0]['message']
+        tool_calls = message_obj.get('tool_calls', [])
+
+        # Extract the actual JSON from tool call arguments
+        if tool_calls and 'function' in tool_calls[0]:
+            arguments_str = tool_calls[0]['function'].get('arguments')
+            if arguments_str:
+                try:
+                    arguments_json = json.loads(arguments_str)
+                    # Extract the message field which contains the actual JSON result
+                    message_content = arguments_json.get('message', '')
+
+                    # Try to parse the message as JSON
+                    try:
+                        final_json = json.loads(message_content)
+                        result = json.dumps(final_json)
+                        return result
+                    except json.JSONDecodeError:
+                        return message_content
+                except json.JSONDecodeError:
+                    return arguments_str
+    return None
+
+
+def _extract_from_message_event(event_dict: dict) -> str | None:
+    """Extract content from regular agent messages."""
+    content = _extract_content_from_event(event_dict)
+    if content and len(content.strip()) > 10:
+        # Try to extract JSON first
+        json_result = _try_extract_json(content)
+        if json_result:
+            result = json.dumps(json_result)
+            return result
+        else:
+            return content
+    return None
+
+
+def _try_extract_json(content: str) -> dict | None:
+    """Try to extract JSON from content using various patterns."""
+    if not content:
+        return None
+
+    import json
+    import re
+
+    json_patterns = [
+        r'```json\s*\n?(.*?)\n?```',  # JSON in code blocks
+        r'```\s*\n?(.*?)\n?```',  # General code blocks
+        r'\{.*?\}',  # JSON objects (including nested)
+    ]
+
+    for pattern in json_patterns:
+        matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
+        for match in matches:
+            try:
+                clean_match = match.strip()
+                if not clean_match.startswith('{'):
+                    continue
+                return json.loads(clean_match)
+            except json.JSONDecodeError:
+                continue
+    return None

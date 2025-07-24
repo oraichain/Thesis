@@ -580,31 +580,9 @@ class CodeActAgent(Agent):
 
         messages = self._get_messages(condensed_history, research_mode=research_mode)
         formatted_messages = self.llm.format_messages_for_llm(messages)
-        convert_knowledge_to_list = [
-            self.knowledge_base[k] for k in self.knowledge_base
-        ]
         # NOTE: This is user's dynamic knowledge base. Do not cache this message, as it will be updated frequently.
         # NOTE: Only cache static large knowledge base that is uploaded by the user (changed rarely).
-        if len(convert_knowledge_to_list) > 0:
-            formatted_messages.append(
-                {
-                    'role': 'assistant',
-                    'content': [
-                        {
-                            'type': 'text',
-                            'text': "User's Knowledge base is in <knowledge_base></knowledge_base> tag\n",
-                        },
-                        {
-                            'type': 'text',
-                            'text': f'<knowledge_base>{json.dumps(convert_knowledge_to_list)}</knowledge_base>',
-                        },
-                        {
-                            'type': 'text',
-                            'text': "Use it for user info's reference if needed.",
-                        },
-                    ],
-                }
-            )
+
         current_date = datetime.now().strftime('%Y-%m-%d')
         formatted_messages.append(
             {
@@ -774,6 +752,18 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
+        user_context = self._handle_format_output()
+        if user_context:
+            messages.append(
+                Message(role='user', content=[TextContent(text=user_context)])
+            )
+
+        knowledge_base = self._handle_knowledge_base()
+        if knowledge_base:
+            messages.append(
+                Message(role='user', content=[TextContent(text=knowledge_base)])
+            )
+
         # Use ConversationMemory to process events
         messages = self.conversation_memory.process_events(
             condensed_history=events,
@@ -781,7 +771,6 @@ class CodeActAgent(Agent):
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
         )
-
         messages = self._enhance_messages(messages)
 
         if self.llm.is_caching_prompt_active():
@@ -826,3 +815,28 @@ class CodeActAgent(Agent):
             prev_role = msg.role
 
         return results
+
+    def _handle_format_output(self) -> str:
+        if self.output_config:
+            # if 'output_type' in self.output_config:
+            #     if self.output_config['output_type'] == 'json':
+            #         return f"Please return final output in json format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}. Don't try to write the report, just give me the json format."
+            #     elif self.output_config['output_type'] == 'text':
+            #         return f"Please return final output in text format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}."
+
+            if 'prompt' in self.output_config:
+                return self.output_config['prompt']
+        return ''
+
+    def _handle_knowledge_base(self) -> str:
+        convert_knowledge_to_list = [
+            self.knowledge_base[k] for k in self.knowledge_base
+        ]
+        if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
+            return f"""I'm providing you with a knowledge base that contains relevant information. Please use this knowledge to answer my questions when applicable.
+
+<knowledge_base>
+{json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
+</knowledge_base>
+Please acknowledge that you've received this knowledge base and are ready to use it for our conversation."""
+        return ''
