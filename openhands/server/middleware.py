@@ -144,6 +144,10 @@ class AttachConversationMiddleware(SessionMiddlewareInterface):
             path_parts = request.url.path.split('/')
             if len(path_parts) > 4:
                 conversation_id = request.url.path.split('/')[3]
+        if request.url.path.startswith('/api/v1/integration/conversations'):
+            path_parts = request.url.path.split('/')
+            if len(path_parts) >= 6:
+                conversation_id = request.url.path.split('/')[5]
         if not conversation_id:
             return False
 
