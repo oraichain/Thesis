@@ -833,10 +833,11 @@ class CodeActAgent(Agent):
             self.knowledge_base[k] for k in self.knowledge_base
         ]
         if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
-            return f"""I'm providing you with a knowledge base that contains relevant information. Please use this knowledge to answer my questions when applicable.
+            return f"""PRIORITY: Use this knowledge base as your primary source. Only search for additional information if the knowledge base is insufficient.
 
 <knowledge_base>
 {json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
 </knowledge_base>
-Please acknowledge that you've received this knowledge base and are ready to use it for our conversation."""
+
+This knowledge base contains the most relevant and accurate information for our task. Prioritize it over external searches."""
         return ''
