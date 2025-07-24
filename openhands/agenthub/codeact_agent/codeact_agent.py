@@ -833,12 +833,12 @@ class CodeActAgent(Agent):
 
     def _handle_format_output(self) -> str:
         if self.output_config:
-            if 'output_type' in self.output_config:
-                if self.output_config['output_type'] == 'json':
-                    return f"Please return final output in json format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}. Don't try to write the report, just give me the json format."
-                elif self.output_config['output_type'] == 'text':
-                    return f"Please return final output in text format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}."
+            # if 'output_type' in self.output_config:
+            #     if self.output_config['output_type'] == 'json':
+            #         return f"Please return final output in json format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}. Don't try to write the report, just give me the json format."
+            #     elif self.output_config['output_type'] == 'text':
+            #         return f"Please return final output in text format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}."
 
-            if 'Prompt' in self.output_config:
-                return self.output_config['Prompt']
+            if 'prompt' in self.output_config:
+                return self.output_config['prompt']
         return ''

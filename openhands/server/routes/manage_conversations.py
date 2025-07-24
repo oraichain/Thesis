@@ -250,14 +250,17 @@ async def new_conversation(request: Request, data: InitSessionRequest):
         if space_section_id:
             section_config = await space_get_config_section(space_section_id)
             if section_config:
-                if initial_user_msg is None:
-                    initial_user_msg = section_config['chartPrompt']
-                else:
-                    initial_user_msg = (
-                        initial_user_msg + '\n\n' + section_config['chartPrompt']
-                    )
+                # if initial_user_msg is None:
+                #     initial_user_msg = section_config['chartPrompt']
+                # else:
+                #     initial_user_msg = (
+                #         initial_user_msg + '\n\n' + section_config['chartPrompt']
+                #     )
                 mcp_disable = section_config['mcpDisable']
-                output_config = section_config['outputConfig']
+                output_config = {
+                    'prompt': section_config['chartPrompt'],
+                    'output': section_config['outputConfig'],
+                }
 
         # if space_id or thread_follow_up:
         #     knowledge_base = await search_knowledge(
