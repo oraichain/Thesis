@@ -20,6 +20,7 @@ from openhands.server.routes.conversation import app as conversation_api_router
 from openhands.server.routes.feedback import app as feedback_api_router
 from openhands.server.routes.files import app as files_api_router
 from openhands.server.routes.git import app as git_api_router
+from openhands.server.routes.integration import app as integration_api_router
 from openhands.server.routes.invitation import app as invitation_api_router
 from openhands.server.routes.manage_conversations import (
     app as manage_conversation_api_router,
@@ -87,3 +88,4 @@ app.include_router(auth_router)
 app.include_router(invitation_api_router)
 app.include_router(prompt_api_router)
 app.include_router(usecase_api_router)
+app.include_router(integration_api_router)
