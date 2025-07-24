@@ -73,6 +73,7 @@ class InitSessionRequest(BaseModel):
     space_id: int | None = None
     thread_follow_up: int | None = None
     followup_discover_id: str | None = None
+    is_generate_title: bool = False
 
 
 class ChangeVisibilityRequest(BaseModel):
@@ -103,6 +104,7 @@ async def _create_new_conversation(
     space_id: int | None = None,
     thread_follow_up: int | None = None,
     raw_followup_conversation_id: str | None = None,
+    is_generate_title: bool = False,
 ):
     logger.info(
         'Creating conversation',
@@ -157,7 +159,10 @@ async def _create_new_conversation(
         extra={'user_id': user_id, 'session_id': conversation_id},
     )
 
-    conversation_title = get_default_conversation_title(conversation_id)
+    if is_generate_title:
+        conversation_title = await auto_generate_title(conversation_id, user_id)
+    else:
+        conversation_title = get_default_conversation_title(conversation_id)
 
     logger.info(f'Saving metadata for conversation {conversation_id}')
     await conversation_store.save_metadata(
@@ -213,6 +218,10 @@ async def _create_new_conversation(
 
 
 @app.post('/conversations')
+async def app_new_conversation(request: Request, data: InitSessionRequest):
+    return await new_conversation(request, data)
+
+
 async def new_conversation(request: Request, data: InitSessionRequest):
     """Initialize a new session or join an existing one.
 
@@ -235,6 +244,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     bearer_token = request.headers.get('Authorization')
     x_device_id = request.headers.get('x-device-id')
     followup_discover_id = data.followup_discover_id
+    is_generate_title = data.is_generate_title
 
     try:
         knowledge_base = None
@@ -270,6 +280,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
             space_id=space_id,
             thread_follow_up=thread_follow_up,
             raw_followup_conversation_id=raw_followup_conversation_id,
+            is_generate_title=is_generate_title,
         )
 
         end_time = time.time()
