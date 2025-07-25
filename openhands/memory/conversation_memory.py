@@ -319,7 +319,7 @@ class ConversationMemory:
             ]
         elif isinstance(action, MessageAction):
             role = 'user' if action.source == 'user' else 'assistant'
-            content = [TextContent(text=action.content or '')]
+            content = [TextContent(text=f"""PRIMARY USER TASK: {action.content}""")]
             if vision_is_active and action.image_urls:
                 content.append(ImageContent(image_urls=action.image_urls))
             if role not in ('user', 'system', 'assistant', 'tool'):
