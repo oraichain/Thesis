@@ -266,7 +266,9 @@ def _extract_from_edit_event(event_dict: dict) -> str | None:
             if arguments_str:
                 try:
                     arguments_json = json.loads(arguments_str)
-                    file_text = arguments_json.get('file_text', '')
+                    file_text = arguments_json.get(
+                        'file_text', ''
+                    ) or arguments_json.get('new_str', '')
 
                     if file_text and len(file_text.strip()) > 10:
                         # Try to extract JSON from file content first
