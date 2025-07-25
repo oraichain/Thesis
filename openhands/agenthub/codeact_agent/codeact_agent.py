@@ -752,11 +752,6 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
-        user_context = self._handle_format_output()
-        if user_context:
-            messages.append(
-                Message(role='user', content=[TextContent(text=user_context)])
-            )
 
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
@@ -771,6 +766,11 @@ class CodeActAgent(Agent):
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
         )
+        user_context = self._handle_format_output()
+        if user_context:
+            messages.append(
+                Message(role='user', content=[TextContent(text=user_context)])
+            )
         messages = self._enhance_messages(messages)
 
         if self.llm.is_caching_prompt_active():
@@ -825,7 +825,7 @@ class CodeActAgent(Agent):
             #         return f"Please return final output in text format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}."
 
             if 'prompt' in self.output_config:
-                return self.output_config['prompt']
+                return f"""EXPECTED OUTPUT FORMAT: {self.output_config['prompt']}"""
         return ''
 
     def _handle_knowledge_base(self) -> str:
