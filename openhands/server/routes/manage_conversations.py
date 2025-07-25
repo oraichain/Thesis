@@ -164,7 +164,11 @@ async def _create_new_conversation(
     )
 
     if is_generate_title:
-        conversation_title = await auto_generate_title(conversation_id, user_id)
+        conversation_title = await _llm_generate_title(
+            user_id=user_id,
+            first_user_message=initial_user_msg,
+            conversation_id=conversation_id,
+        )
     else:
         conversation_title = get_default_conversation_title(conversation_id)
 
@@ -570,26 +574,13 @@ async def auto_generate_title(conversation_id: str, user_id: str | None) -> str:
 
         if first_user_message:
             # Get LLM config from user settings
-            try:
-                settings = await get_user_setting(user_id)
-
-                if settings and settings.llm_model:
-                    # Create LLM config from settings
-                    llm_config = LLMConfig(
-                        model=settings.llm_model,
-                        api_key=settings.llm_api_key,
-                        base_url=settings.llm_base_url,
-                    )
-
-                    # Try to generate title using LLM
-                    llm_title = await generate_conversation_title(
-                        first_user_message, llm_config
-                    )
-                    if llm_title:
-                        logger.info(f'Generated title using LLM: {llm_title}')
-                        return llm_title
-            except Exception as e:
-                logger.error(f'Error using LLM for title generation: {e}')
+            llm_title = await _llm_generate_title(
+                user_id=user_id,
+                first_user_message=first_user_message,
+                conversation_id=conversation_id,
+            )
+            if llm_title:
+                return llm_title
 
             # Fall back to simple truncation if LLM generation fails or is unavailable
             first_user_message = first_user_message.strip()
@@ -743,3 +734,32 @@ async def _get_conversation_info(
             extra={'session_id': conversation.conversation_id},
         )
         return None
+
+
+async def _llm_generate_title(
+    user_id: str | None, first_user_message: str | None, conversation_id: str
+) -> str:
+    if not user_id or not first_user_message:
+        return get_default_conversation_title(conversation_id)
+
+    try:
+        settings = await get_user_setting(user_id)
+
+        if settings and settings.llm_model:
+            # Create LLM config from settings
+            llm_config = LLMConfig(
+                model=settings.llm_model,
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+            )
+
+            # Try to generate title using LLM
+            llm_title = await generate_conversation_title(
+                first_user_message, llm_config
+            )
+            if llm_title:
+                logger.info(f'Generated title using LLM: {llm_title}')
+                return llm_title
+    except Exception as e:
+        logger.error(f'Error using LLM for title generation: {e}')
+    return get_default_conversation_title(conversation_id)
