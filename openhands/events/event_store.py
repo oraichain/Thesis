@@ -288,6 +288,59 @@ class EventStore:
 
         return matching_events
 
+    def get_events_by_action(
+        self,
+        actions: list[str],
+        limit: int = 100,
+        reverse: bool = True,
+    ) -> list[Event]:
+        """Get events filtered by specific actions with limit and sorting by created_at.
+
+        Args:
+            actions: List of action names to filter by (e.g., ['edit', 'finish'])
+            limit: Maximum number of events to return. Must be between 1 and 100. Defaults to 100
+            reverse: Whether to retrieve events in reverse order (newest first). Defaults to True
+
+        Returns:
+            list: List of matching events
+
+        Raises:
+            ValueError: If limit is less than 1 or greater than 100
+        """
+        if limit < 1 or limit > 100:
+            raise ValueError('Limit must be between 1 and 100')
+
+        from openhands.core.config import load_app_config
+        from openhands.storage.database import db_file_store
+
+        config_app = load_app_config()
+
+        if config_app.file_store == 'database':
+            # Use database-specific filtering for better performance
+            order_by = (
+                'ORDER BY created_at DESC' if reverse else 'ORDER BY created_at ASC'
+            )
+            events = db_file_store._get_events_by_action(
+                self.sid, actions, limit, order_by
+            )
+            return [event_from_dict(event_dict) for event_dict in events if event_dict]
+        else:
+            # Fallback to file-based filtering
+            matching_events: list[Event] = []
+
+            for event in self.get_events(reverse=reverse):
+                event_dict = event_to_dict(event)
+                event_action = event_dict.get('action')
+
+                if event_action in actions:
+                    matching_events.append(event)
+
+                    # Stop if we have enough events
+                    if len(matching_events) >= limit:
+                        break
+
+            return matching_events
+
     def _get_filename_for_id(self, id: int, user_id: str | None) -> str:
         return get_conversation_event_filename(self.sid, id, user_id)
 

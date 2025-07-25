@@ -1246,11 +1246,10 @@ class AgentController:
         try:
             # Get recent events from the event stream to find the final result
             recent_events = list(
-                self.event_stream.get_events(
-                    filter_out_type=(),
-                    filter_hidden=False,
-                    limit=10,
-                    order_by='created_at',
+                self.event_stream.get_events_by_action(
+                    actions=['edit', 'finish', 'message'],
+                    limit=20,
+                    reverse=True,
                 )
             )
 
