@@ -833,11 +833,11 @@ class CodeActAgent(Agent):
             self.knowledge_base[k] for k in self.knowledge_base
         ]
         if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
-            return f"""PRIORITY: Use this knowledge base as your primary source. Only search for additional information if the knowledge base is insufficient.
+            return f"""
+This knowledge base should be evaluated for its relevance and ability to address the input task. If it is found to be sufficiently relevant and capable of supporting the task, prioritize it over external sources. Otherwise, consider supplementing or replacing it with information from external searches.
 
 <knowledge_base>
 {json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
 </knowledge_base>
-
-This knowledge base contains the most relevant and accurate information for our task. Prioritize it over external searches."""
+"""
         return ''
