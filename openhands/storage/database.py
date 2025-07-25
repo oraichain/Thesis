@@ -495,7 +495,7 @@ class DatabaseFileStore(FileStore):
                     FROM conversation_events
                     WHERE conversation_id = %s
                       AND ({action_filter})
-                    {order_by}
+                    ORDER BY {order_by}
                     LIMIT %s
                 """
 
