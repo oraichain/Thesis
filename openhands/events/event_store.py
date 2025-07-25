@@ -317,9 +317,7 @@ class EventStore:
 
         if config_app.file_store == 'database':
             # Use database-specific filtering for better performance
-            order_by = (
-                'ORDER BY created_at DESC' if reverse else 'ORDER BY created_at ASC'
-            )
+            order_by = 'created_at DESC' if reverse else 'created_at ASC'
             events = db_file_store._get_events_by_action(
                 self.sid, actions, limit, order_by
             )
