@@ -467,6 +467,41 @@ class DatabaseFileStore(FileStore):
                 )
                 return [event[0] for event in cursor.fetchall()]
 
+    def _get_events_by_action(
+        self, conversation_id: str, actions: List[str], limit: int, order_by: str
+    ) -> List[dict]:
+        """Get events from conversation_events table filtered by action types.
+
+        Args:
+            conversation_id: The conversation ID to filter events for
+            actions: List of action names to filter by (e.g., ['edit', 'finish'])
+            limit: Maximum number of events to return
+            order_by: SQL ORDER BY clause (e.g., 'created_at DESC')
+
+        Returns:
+            List of event metadata dictionaries
+        """
+        with db_pool.get_connection_context() as conn:
+            with conn.cursor() as cursor:
+                # Build the WHERE clause for action filtering
+                action_conditions = []
+                for action in actions:
+                    action_conditions.append(f"metadata->>'action' = '{action}'")
+
+                action_filter = ' OR '.join(action_conditions)
+
+                query = f"""
+                    SELECT metadata
+                    FROM conversation_events
+                    WHERE conversation_id = %s
+                      AND ({action_filter})
+                    {order_by}
+                    LIMIT %s
+                """
+
+                cursor.execute(query, (conversation_id, limit))
+                return [event[0] for event in cursor.fetchall()]
+
     def _check_event_exists(self, conversation_id: str) -> bool:
         """Check if event exists in conversation_events table."""
         with db_pool.get_connection_context() as conn:
