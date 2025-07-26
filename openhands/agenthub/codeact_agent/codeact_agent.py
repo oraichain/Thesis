@@ -752,13 +752,6 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
-
-        knowledge_base = self._handle_knowledge_base()
-        if knowledge_base:
-            messages.append(
-                Message(role='user', content=[TextContent(text=knowledge_base)])
-            )
-
         # Use ConversationMemory to process events
         messages = self.conversation_memory.process_events(
             condensed_history=events,
@@ -766,6 +759,11 @@ class CodeActAgent(Agent):
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
         )
+        knowledge_base = self._handle_knowledge_base()
+        if knowledge_base:
+            messages.append(
+                Message(role='user', content=[TextContent(text=knowledge_base)])
+            )
         user_context = self._handle_format_output()
         if user_context:
             messages.append(
@@ -825,7 +823,7 @@ class CodeActAgent(Agent):
             #         return f"Please return final output in text format: {self.output_config['output_schema'] if 'output_schema' in self.output_config else ''}."
 
             if 'prompt' in self.output_config:
-                return f"""EXPECTED OUTPUT FORMAT: {self.output_config['prompt']}"""
+                return f"""REQUIRED OUTPUT STRUCTURE: {self.output_config['prompt']}"""
         return ''
 
     def _handle_knowledge_base(self) -> str:
@@ -833,11 +831,15 @@ class CodeActAgent(Agent):
             self.knowledge_base[k] for k in self.knowledge_base
         ]
         if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
-            return f"""
-This knowledge base should be evaluated for its relevance and ability to address the input task. If it is found to be sufficiently relevant and capable of supporting the task, prioritize it over external sources. Otherwise, consider supplementing or replacing it with information from external searches.
+            knowledge_content = '\n=====\n'.join(
+                [item['content'] for item in convert_knowledge_to_list]
+            )
 
-<knowledge_base>
-{json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
-</knowledge_base>
+            return f"""
+Review the following knowledge repository to determine its relevance and sufficiency for addressing the input task. If this information adequately covers the task requirements, utilize it as the primary source rather than seeking external references. Should the content prove insufficient or only partially relevant, enhance it through external searches or alternative information sources.
+
+<available_knowledge>
+{knowledge_content}
+</available_knowledge>
 """
         return ''
