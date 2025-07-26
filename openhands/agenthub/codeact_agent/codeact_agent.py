@@ -754,13 +754,11 @@ class CodeActAgent(Agent):
                 ],
             )
         #  # Add knowledge base priority instruction to system message (static, cacheable)
-        # kb_instruction = self.get_knowledge_base_instruction()
-        # if kb_instruction and messages:
-        #     # Append to first system message to keep it cached
-        #     system_msg = messages[0]
-        #     if system_msg.role == 'system':
-        #         # Add knowledge base instruction to system message content
-        #         system_msg.content.append(TextContent(text=kb_instruction))
+        kb_instruction = self.get_knowledge_base_instruction()
+        if kb_instruction and messages:
+            system_msg = messages[0]
+            if system_msg.role == 'system':
+                system_msg.content.append(TextContent(text=kb_instruction))
 
         # Use ConversationMemory to process events first (static cached content)
         messages = self.conversation_memory.process_events(
@@ -843,28 +841,19 @@ class CodeActAgent(Agent):
             self.knowledge_base[k] for k in self.knowledge_base
         ]
         if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
-            return f"""
-        PRIORITY RULES:
-1. Check knowledge base first for relevant information
-2. Use knowledge base as primary source when available and relevant to the task
-3. Only search external sources if knowledge base is insufficient
-4. When combining sources, prioritize knowledge base content
-
-<knowledge_base>
+            return f"""***HERE IS THE KNOWLEDGE BASE***\n<knowledge_base>
 {json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
-</knowledge_base>
-"""
+</knowledge_base>"""
         return ''
 
     def get_knowledge_base_instruction(self) -> str:
         """Get knowledge base priority instruction for system prompt (cacheable)"""
         if bool(self.knowledge_base and len(self.knowledge_base) > 0):
             return """
-KNOWLEDGE BASE PRIORITY SYSTEM:
-- You have access to a curated knowledge base provided by the creator
-- ALWAYS check knowledge base FIRST before using external search tools
-- Use knowledge base as the PRIMARY SOURCE when relevant information is available
-- Only search external sources when knowledge base lacks required information
-- When both sources exist, PRIORITIZE knowledge base content over external data
+Knowledge Base Integration
+- Initial Assessment: Check knowledge base relevance to the task first
+- If Sufficient: Use KB as primary source and complete task
+- If Insufficient: Combine KB content with external research for comprehensive results
+- Avoid Hallucination: Only reference KB when it contains relevant information
 """
         return ''
