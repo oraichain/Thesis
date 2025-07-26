@@ -851,11 +851,9 @@ class CodeActAgent(Agent):
         if bool(self.knowledge_base and len(self.knowledge_base) > 0):
             return """
 Knowledge Base Integration
-- Source Priority: You have access to a curated knowledge base provided by the creator
-- Relevance Assessment: First analyze if the knowledge base contains information relevant to the current task
-- Primary Source Usage: When relevant, use knowledge base as the authoritative source for that specific information
-- External Search: Only use external search tools when knowledge base is insufficient or irrelevant
-- Selective Prioritization: Prioritize knowledge base content only for topics it covers
-- Avoid Forced Usage: Do not force knowledge base usage when it's clearly irrelevant to the task
+- Initial Assessment: Check knowledge base relevance to the task first
+- If Sufficient: Use KB as primary source and complete task
+- If Insufficient: Combine KB content with external research for comprehensive results
+- Avoid Hallucination: Only reference KB when it contains relevant information
 """
         return ''
