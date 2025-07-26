@@ -121,6 +121,28 @@ async def get_system_prompt_from_thesis_auth_server(
         return None
 
 
+async def get_system_prompt_by_space_id_from_thesis_auth_server(
+    space_id: int,
+    bearer_token: str,
+    x_device_id: str | None = None,
+) -> str | None:
+    url = f'/api/spaces/{space_id}/system-prompt-by-space'
+    headers = {'Content-Type': 'application/json', 'Authorization': bearer_token}
+    if x_device_id:
+        headers['x-device-id'] = x_device_id
+    try:
+        response = await thesis_auth_client.get(url, headers=headers)
+        if response.status_code != 200:
+            logger.error(
+                f'Failed to get system prompt: {response.status_code} - {response.text}'
+            )
+            return None
+        return response.json()['data']
+    except httpx.RequestError as exc:
+        logger.error(f'Request error while getting system prompt: {str(exc)}')
+        return None
+
+
 async def add_invite_code_to_user(
     code: str, bearer_token: str, x_device_id: str | None = None
 ) -> dict | None:
