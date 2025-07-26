@@ -48,6 +48,7 @@ from openhands.server.thesis_auth import (
     change_thread_visibility,
     create_thread,
     delete_thread,
+    get_system_prompt_by_space_id_from_thesis_auth_server,
     get_thread_by_id,
     space_get_config_section,
 )
@@ -258,6 +259,12 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     mcp_disable = data.mcp_disable
     output_config: dict | None = None
     is_generate_title = data.is_generate_title
+
+    if space_id is not None:
+        # get system prompt from thesis auth server
+        system_prompt = await get_system_prompt_by_space_id_from_thesis_auth_server(
+            int(space_id), 'Bearer ' + (bearer_token or ''), x_device_id
+        )
 
     try:
         knowledge_base = None
