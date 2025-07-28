@@ -263,8 +263,9 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     if space_id is not None:
         # get system prompt from thesis auth server
         system_prompt = await get_system_prompt_by_space_id_from_thesis_auth_server(
-            int(space_id), 'Bearer ' + (bearer_token or ''), x_device_id
+            int(space_id), bearer_token, x_device_id
         )
+        logger.info('system_prompt_when_create_new_convo', system_prompt)
 
     try:
         knowledge_base = None
