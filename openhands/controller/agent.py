@@ -175,29 +175,29 @@ class Agent(ABC):
         self.output_config = output_config
 
     def update_agent_knowledge_base(self, knowledge_base: Any | None = None) -> None:
-        """Update the knowledge base for the agent.
-
-        Args:
-        - knowledge_base (list[dict]): The knowledge base.
-        """
-        print(f'Update agent knowledge base: {knowledge_base}')
-
-        # Initialize knowledge base structure if not exists
+        """Update the knowledge base for the agent."""
+        # Initialize structure
         if 'knowledge_base_results' not in self.knowledge_base:
             self.knowledge_base['knowledge_base_results'] = {}
         if 'x_results' not in self.knowledge_base:
             self.knowledge_base['x_results'] = {}
 
-        # update
-        if knowledge_base:
-            if 'knowledge_base_results' in knowledge_base:
-                for k in knowledge_base['knowledge_base_results']:
-                    if k['chunkId']:
-                        self.knowledge_base['knowledge_base_results'][k['chunkId']] = k
-            if 'x_results' in knowledge_base:
-                for k in knowledge_base['x_results']:
-                    if k['chunkId']:
-                        self.knowledge_base['x_results'][k['chunkId']] = k
+        if not knowledge_base:
+            return
+
+        # Update knowledge_base_results
+        if 'knowledge_base_results' in knowledge_base:
+            for item in knowledge_base['knowledge_base_results']:
+                if item.get('chunkId'):
+                    self.knowledge_base['knowledge_base_results'][item['chunkId']] = (
+                        item
+                    )
+
+        # Update x_results
+        if 'x_results' in knowledge_base:
+            for item in knowledge_base['x_results']:
+                if item.get('chunkId'):
+                    self.knowledge_base['x_results'][item['chunkId']] = item
 
     def set_event_stream(self, event_stream) -> None:
         self.event_stream = event_stream
