@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional, Type
 
 from openhands.llm.streaming_llm import StreamingLLM
 
@@ -53,7 +53,7 @@ class Agent(ABC):
         self.a2a_manager = a2a_manager
         self.system_prompt: str = ''
         self.user_prompt: str = ''
-        self.knowledge_base: dict[str, dict] = {}
+        self.knowledge_base: dict[str, Any] = {}
         self.event_stream: 'EventStream' | None = None
         self.session_id: str | None = kwargs.get('session_id', None)
         self.enable_streaming: bool = kwargs.get('enable_streaming', False)
@@ -174,20 +174,30 @@ class Agent(ABC):
         """
         self.output_config = output_config
 
-    def update_agent_knowledge_base(
-        self, knowledge_base: list[dict] | None = None
-    ) -> None:
+    def update_agent_knowledge_base(self, knowledge_base: Any | None = None) -> None:
         """Update the knowledge base for the agent.
 
         Args:
         - knowledge_base (list[dict]): The knowledge base.
         """
         print(f'Update agent knowledge base: {knowledge_base}')
+
+        # Initialize knowledge base structure if not exists
+        if 'knowledge_base_results' not in self.knowledge_base:
+            self.knowledge_base['knowledge_base_results'] = None
+        if 'x_results' not in self.knowledge_base:
+            self.knowledge_base['x_results'] = None
+
         # update
         if knowledge_base:
-            for k in knowledge_base:
-                if k.get('chunkId', None):
-                    self.knowledge_base[k['chunkId']] = k
+            if 'knowledge_base_results' in knowledge_base:
+                for k in knowledge_base['knowledge_base_results']:
+                    if k['chunkId']:
+                        self.knowledge_base['knowledge_base_results'][k['chunkId']] = k
+            if 'x_results' in knowledge_base:
+                for k in knowledge_base['x_results']:
+                    if k['chunkId']:
+                        self.knowledge_base['x_results'][k['chunkId']] = k
 
     def set_event_stream(self, event_stream) -> None:
         self.event_stream = event_stream

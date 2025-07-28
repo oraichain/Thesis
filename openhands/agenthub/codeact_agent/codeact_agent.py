@@ -755,17 +755,11 @@ class CodeActAgent(Agent):
             )
 
         # Use ConversationMemory to process events first (static cached content)
-        messages = self.conversation_memory.process_events(
-            condensed_history=events,
-            initial_messages=messages,
-            max_message_chars=self.llm.config.max_message_chars,
-            vision_is_active=self.llm.vision_is_active(),
-        )
 
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
             messages.append(
-                Message(role='assistant', content=[TextContent(text=knowledge_base)])
+                Message(role='user', content=[TextContent(text=knowledge_base)])
             )
 
         user_context = self._handle_format_output()
@@ -773,6 +767,13 @@ class CodeActAgent(Agent):
             messages.append(
                 Message(role='user', content=[TextContent(text=user_context)])
             )
+        messages = self.conversation_memory.process_events(
+            condensed_history=events,
+            initial_messages=messages,
+            max_message_chars=self.llm.config.max_message_chars,
+            vision_is_active=self.llm.vision_is_active(),
+        )
+
         messages = self._enhance_messages(messages)
 
         if self.llm.is_caching_prompt_active():
@@ -831,17 +832,54 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        convert_knowledge_to_list = [
-            self.knowledge_base[k] for k in self.knowledge_base
-        ]
-        if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
+        knowledge_content = []
+        # Handle x_results
+        if 'x_results' in self.knowledge_base and self.knowledge_base['x_results']:
+            x_results = [
+                self.knowledge_base['x_results'][k]
+                for k in self.knowledge_base['x_results']
+            ]
+            if x_results:
+                knowledge_content.append(f"""<XResult>
+Description: Here is the tweets that are related to the task, we can consider it is also the knowledge base.
+{json.dumps(x_results, ensure_ascii=False, indent=2)}
+</XResult>""")
+        # Handle knowledge_base_results
+        if (
+            'knowledge_base_results' in self.knowledge_base
+            and self.knowledge_base['knowledge_base_results']
+        ):
+            kb_results = [
+                self.knowledge_base['knowledge_base_results'][k]
+                for k in self.knowledge_base['knowledge_base_results']
+            ]
+            if kb_results:
+                knowledge_content.append(f"""<KnowledgeBase>
+{json.dumps(kb_results, ensure_ascii=False, indent=2)}
+</KnowledgeBase>""")
+
+        if knowledge_content:
             return f"""
-        Knowledge Base Integration
-- Initial Assessment: Check knowledge base relevance to the task first
-- If Sufficient: Use KB as primary source and complete task
-- If Insufficient: Combine KB content with external research for comprehensive results
-- Avoid Hallucination: Only reference KB when it contains relevant information\n
-        ***HERE IS THE KNOWLEDGE BASE***\n<knowledge_base>
-{json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
-</knowledge_base>"""
+***KNOWLEDGE BASE ANALYSIS REQUIRED***
+
+Before using any external tools, you MUST analyze the provided knowledge base and explicitly state:
+
+1. **Knowledge Relevance Assessment**:
+   - What specific information from the knowledge base is relevant to the current task?
+   - Quote the relevant parts and explain how they relate to the task
+
+2. **Sufficiency Analysis**:
+   - Is the knowledge base information sufficient to complete the task?
+   - What specific gaps or missing information do you identify?
+   - What additional information would be needed to complete the task?
+
+3. **Action Decision**:
+   - If sufficient: Complete the task using only the knowledge base
+   - If insufficient: Clearly state what external information you need to search for and why
+
+**CRITICAL**: You must show this reasoning process explicitly before taking any actions or using external tools.
+
+***HERE IS THE KNOWLEDGE BASE***
+{chr(10).join(knowledge_content)}
+**Remember**: Always start by analyzing the knowledge base above before proceeding with the task."""
         return ''
