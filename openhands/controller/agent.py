@@ -184,9 +184,9 @@ class Agent(ABC):
 
         # Initialize knowledge base structure if not exists
         if 'knowledge_base_results' not in self.knowledge_base:
-            self.knowledge_base['knowledge_base_results'] = None
+            self.knowledge_base['knowledge_base_results'] = {}
         if 'x_results' not in self.knowledge_base:
-            self.knowledge_base['x_results'] = None
+            self.knowledge_base['x_results'] = {}
 
         # update
         if knowledge_base:
