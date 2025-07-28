@@ -251,7 +251,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
         system_prompt = await get_system_prompt_by_space_id_from_thesis_auth_server(
             int(space_id), bearer_token, x_device_id
         )
-        logger.info('system_prompt_when_create_new_convo', system_prompt)
+        logger.info(f'system_prompt_when_create_new_convo: {system_prompt}')
 
     try:
         knowledge_base = None
