@@ -294,6 +294,14 @@ def _extract_from_finish_event(event_dict: dict) -> str | None:
         message_obj = choices[0]['message']
         tool_calls = message_obj.get('tool_calls', [])
 
+        content = message_obj.get('content', '')
+        if content and len(content.strip()) > 0:
+            # Try to extract JSON first
+            json_result = _try_extract_json(content)
+            if json_result:
+                result = json.dumps(json_result)
+                return result
+
         # Extract the actual JSON from tool call arguments
         if tool_calls and 'function' in tool_calls[0]:
             arguments_str = tool_calls[0]['function'].get('arguments')
