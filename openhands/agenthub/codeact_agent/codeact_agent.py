@@ -765,7 +765,7 @@ class CodeActAgent(Agent):
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
             messages.append(
-                Message(role='user', content=[TextContent(text=knowledge_base)])
+                Message(role='assistant', content=[TextContent(text=knowledge_base)])
             )
 
         user_context = self._handle_format_output()
