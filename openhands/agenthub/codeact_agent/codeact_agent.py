@@ -834,7 +834,10 @@ class CodeActAgent(Agent):
     def _handle_knowledge_base(self) -> str:
         knowledge_content = []
         # Handle x_results
-        if 'x_results' in self.knowledge_base and self.knowledge_base['x_results']:
+        if (
+            'x_results' in self.knowledge_base
+            and len(self.knowledge_base['x_results']) > 0
+        ):
             x_results = [
                 self.knowledge_base['x_results'][k]
                 for k in self.knowledge_base['x_results']
@@ -847,7 +850,7 @@ Description: Here is the tweets that are related to the task, we can consider it
         # Handle knowledge_base_results
         if (
             'knowledge_base_results' in self.knowledge_base
-            and self.knowledge_base['knowledge_base_results']
+            and len(self.knowledge_base['knowledge_base_results']) > 0
         ):
             kb_results = [
                 self.knowledge_base['knowledge_base_results'][k]
@@ -858,28 +861,28 @@ Description: Here is the tweets that are related to the task, we can consider it
 {json.dumps(kb_results, ensure_ascii=False, indent=2)}
 </KnowledgeBase>""")
 
-        if knowledge_content:
+        if len(knowledge_content) > 0:
             return f"""
-***KNOWLEDGE BASE ANALYSIS REQUIRED***
+**KNOWLEDGE BASE EVALUATION PROTOCOL**
 
-Before using any external tools, you MUST analyze the provided knowledge base and explicitly state:
+Before proceeding with any task, analyze the provided knowledge base using this framework:
 
-1. **Knowledge Relevance Assessment**:
-   - What specific information from the knowledge base is relevant to the current task?
-   - Quote the relevant parts and explain how they relate to the task
+1. **Relevance Assessment**:
+   - Identify which information from the knowledge base relates to the current query
+   - Quote relevant sections and explain their connection to the task
 
-2. **Sufficiency Analysis**:
-   - Is the knowledge base information sufficient to complete the task?
-   - What specific gaps or missing information do you identify?
-   - What additional information would be needed to complete the task?
+2. **Completeness Analysis**:
+   - Determine if the knowledge base provides sufficient information
+   - Identify specific gaps or missing elements
+   - Assess what additional information might be needed
 
-3. **Action Decision**:
-   - If sufficient: Complete the task using only the knowledge base
-   - If insufficient: Clearly state what external information you need to search for and why
+3. **Strategic Decision**:
+   - **Sufficient knowledge**: Complete the task using only the knowledge base
+   - **Partial knowledge**: Combine knowledge base information with targeted external research
+   - **Insufficient knowledge**: Clearly specify what external information is required and why
 
-**CRITICAL**: You must show this reasoning process explicitly before taking any actions or using external tools.
+**Knowledge Base:**
+{knowledge_content}
 
-***HERE IS THE KNOWLEDGE BASE***
-{chr(10).join(knowledge_content)}
-**Remember**: Always start by analyzing the knowledge base above before proceeding with the task. If the information there is lacking, feel free to use the available tools you have to continue."""
+**Note**: This evaluation ensures relevant use of available knowledge while maintaining flexibility to seek additional information when genuinely needed."""
         return ''
