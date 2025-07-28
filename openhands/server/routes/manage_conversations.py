@@ -50,7 +50,10 @@ from openhands.server.types import LLMAuthenticationError, MissingSettingsError
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
 from openhands.storage.data_models.conversation_status import ConversationStatus
 from openhands.utils.async_utils import wait_all
-from openhands.utils.conversation_summary import get_default_conversation_title
+from openhands.utils.conversation_summary import (
+    auto_generate_title,
+    get_default_conversation_title,
+)
 from openhands.utils.get_user_setting import get_user_setting
 
 app = APIRouter(prefix='/api')
@@ -99,6 +102,9 @@ async def _create_new_conversation(
     space_id: int | None = None,
     thread_follow_up: int | None = None,
     raw_followup_conversation_id: str | None = None,
+    space_section_id: int | None = None,
+    output_config: dict | None = None,
+    is_generate_title: bool = False,
 ):
     logger.info(
         'Creating conversation',
@@ -154,6 +160,16 @@ async def _create_new_conversation(
     )
 
     conversation_title = get_default_conversation_title(conversation_id)
+    if is_generate_title:
+        new_title = await auto_generate_title(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            file_store=None,
+            settings=settings,
+            first_user_message=initial_user_msg,
+        )
+        if new_title:
+            conversation_title = new_title
 
     logger.info(f'Saving metadata for conversation {conversation_id}')
     await conversation_store.save_metadata(

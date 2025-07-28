@@ -1,12 +1,14 @@
 import json
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
 from openhands.events.event_filter import EventFilter
 from openhands.events.event_store_abc import EventStoreABC
-from openhands.events.serialization.event import event_from_dict
+from openhands.events.serialization.event import event_from_dict, event_to_dict
+from openhands.shared import config as shared_config
+from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 from openhands.storage.locations import (
     get_conversation_dir,
@@ -53,14 +55,9 @@ class EventStore(EventStoreABC):
     cache_size: int = 25
 
     def __post_init__(self) -> None:
-        from openhands.core.config import load_app_config
-        from openhands.storage.database import db_file_store
-
-        config_app = load_app_config()
-
         if self.cur_id >= 0:
             return
-        if config_app.file_store == 'database':
+        if shared_config.file_store == 'database':
             self.cur_id = db_file_store._get_latest_event_id(self.sid)
         else:
             events = []
@@ -96,6 +93,7 @@ class EventStore(EventStoreABC):
         reverse: bool = False,
         filter: EventFilter | None = None,
         limit: int | None = None,
+        order_by: Optional[str] = None,
     ) -> Iterable[Event]:
         """
         Retrieve events from the event stream, optionally filtering out events of a given type
@@ -110,10 +108,6 @@ class EventStore(EventStoreABC):
         Yields:
             Events from the stream that match the criteria.
         """
-        from openhands.core.config import load_app_config
-        from openhands.storage.database import db_file_store
-
-        config_app = load_app_config()
 
         def should_filter(event: Event) -> bool:
             if filter and hasattr(event, 'hidden') and event.hidden:
@@ -122,16 +116,19 @@ class EventStore(EventStoreABC):
                 return True
             return False
 
-        config_app = load_app_config()
-
         if end_id is None:
             end_id = self.cur_id
         else:
             end_id += 1  # From inclusive to exclusive
 
         num_results = 0
-        if config_app.file_store == 'database':
-            events = db_file_store._get_events_from_start_id(self.sid, start_id)
+        if shared_config.file_store == 'database':
+            if limit and order_by:
+                events = db_file_store._get_events_with_filters(
+                    self.sid, {'limit': limit, 'order_by': order_by}
+                )
+            else:
+                events = db_file_store._get_events_from_start_id(self.sid, start_id)
             for event_dict in events:
                 parsed_event = event_from_dict(event_dict)
                 if parsed_event and not should_filter(parsed_event):
@@ -184,6 +181,52 @@ class EventStore(EventStoreABC):
         for event in self.get_events():
             if event.source == source:
                 yield event
+
+    def get_events_by_action(
+        self,
+        actions: list[str],
+        limit: int = 100,
+        reverse: bool = True,
+    ) -> list[Event]:
+        """Get events filtered by specific actions with limit and sorting by created_at.
+
+        Args:
+            actions: List of action names to filter by (e.g., ['edit', 'finish'])
+            limit: Maximum number of events to return. Must be between 1 and 100. Defaults to 100
+            reverse: Whether to retrieve events in reverse order (newest first). Defaults to True
+
+        Returns:
+            list: List of matching events
+
+        Raises:
+            ValueError: If limit is less than 1 or greater than 100
+        """
+        if limit < 1 or limit > 100:
+            raise ValueError('Limit must be between 1 and 100')
+
+        if shared_config.file_store == 'database':
+            # Use database-specific filtering for better performance
+            order_by = 'created_at DESC' if reverse else 'created_at ASC'
+            events = db_file_store._get_events_by_action(
+                self.sid, actions, limit, order_by
+            )
+            return [event_from_dict(event_dict) for event_dict in events if event_dict]
+        else:
+            # Fallback to file-based filtering
+            matching_events: list[Event] = []
+
+            for event in self.get_events(reverse=reverse):
+                event_dict = event_to_dict(event)
+                event_action = event_dict.get('action')
+
+                if event_action in actions:
+                    matching_events.append(event)
+
+                    # Stop if we have enough events
+                    if len(matching_events) >= limit:
+                        break
+
+            return matching_events
 
     def _get_filename_for_id(self, id: int, user_id: str | None) -> str:
         return get_conversation_event_filename(self.sid, id, user_id)
