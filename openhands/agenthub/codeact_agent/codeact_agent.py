@@ -753,12 +753,6 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
-        #  # Add knowledge base priority instruction to system message (static, cacheable)
-        kb_instruction = self.get_knowledge_base_instruction()
-        if kb_instruction and messages:
-            system_msg = messages[0]
-            if system_msg.role == 'system':
-                system_msg.content.append(TextContent(text=kb_instruction))
 
         # Use ConversationMemory to process events first (static cached content)
         messages = self.conversation_memory.process_events(
@@ -841,19 +835,13 @@ class CodeActAgent(Agent):
             self.knowledge_base[k] for k in self.knowledge_base
         ]
         if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
-            return f"""***HERE IS THE KNOWLEDGE BASE***\n<knowledge_base>
-{json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
-</knowledge_base>"""
-        return ''
-
-    def get_knowledge_base_instruction(self) -> str:
-        """Get knowledge base priority instruction for system prompt (cacheable)"""
-        if bool(self.knowledge_base and len(self.knowledge_base) > 0):
-            return """
-Knowledge Base Integration
+            return f"""
+        Knowledge Base Integration
 - Initial Assessment: Check knowledge base relevance to the task first
 - If Sufficient: Use KB as primary source and complete task
 - If Insufficient: Combine KB content with external research for comprehensive results
-- Avoid Hallucination: Only reference KB when it contains relevant information
-"""
+- Avoid Hallucination: Only reference KB when it contains relevant information\n
+        ***HERE IS THE KNOWLEDGE BASE***\n<knowledge_base>
+{json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
+</knowledge_base>"""
         return ''
