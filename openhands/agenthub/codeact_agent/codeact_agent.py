@@ -881,5 +881,5 @@ Before using any external tools, you MUST analyze the provided knowledge base an
 
 ***HERE IS THE KNOWLEDGE BASE***
 {chr(10).join(knowledge_content)}
-**Remember**: Always start by analyzing the knowledge base above before proceeding with the task."""
+**Remember**: Always start by analyzing the knowledge base above before proceeding with the task. If the information there is lacking, feel free to use the available tools you have to continue."""
         return ''
