@@ -360,7 +360,7 @@ async def search_knowledge(
         data = response.json()['data']
         print(f'Data search knowledge: {data}')
         if data:
-            return data['knowledge']
+            return data
         else:
             return None
     except httpx.RequestError as exc:
