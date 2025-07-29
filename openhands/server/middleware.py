@@ -127,6 +127,111 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return True
 
 
+class UserBasedRateLimiter:
+    """Rate limiter that tracks requests per user ID extracted from access tokens."""
+
+    def __init__(
+        self, requests: int = 60, seconds: float = 60, sleep_seconds: float = 1
+    ):
+        """
+        Initialize the rate limiter.
+
+        Args:
+            requests: Maximum number of requests allowed
+            seconds: Time window for the rate limit
+            sleep_seconds: Seconds to sleep when rate limit is exceeded (0 to reject immediately)
+        """
+        self.requests = requests
+        self.seconds = seconds
+        self.sleep_seconds = sleep_seconds
+        self.history: dict[str, list[datetime]] = defaultdict(list)
+
+    def _clean_old_requests(self, user_id: str) -> None:
+        """Remove old requests outside the time window."""
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=self.seconds)
+        self.history[user_id] = [ts for ts in self.history[user_id] if ts > cutoff]
+
+    async def is_allowed(self, user_id: str) -> bool:
+        """
+        Check if the user is allowed to make a request.
+
+        Args:
+            user_id: The user ID to check rate limit for
+
+        Returns:
+            True if request is allowed, False otherwise
+        """
+        if not user_id:
+            return False
+
+        now = datetime.now()
+
+        # Clean old requests
+        self._clean_old_requests(user_id)
+
+        # Add current request
+        self.history[user_id].append(now)
+
+        # Check if over the limit
+        if len(self.history[user_id]) > self.requests * 2:
+            return False
+        elif len(self.history[user_id]) > self.requests:
+            if self.sleep_seconds > 0:
+                await asyncio.sleep(self.sleep_seconds)
+                return True
+            else:
+                return False
+
+        return True
+
+
+class IntegrationRateLimitMiddleware(BaseHTTPMiddleware):
+    """Middleware to apply user-based rate limiting to integration API routes."""
+
+    def __init__(self, app, rate_limiter: UserBasedRateLimiter):
+        super().__init__(app)
+        self.rate_limiter = rate_limiter
+
+    async def dispatch(self, request: Request, call_next):
+        # Only apply rate limiting to integration API routes
+        if not request.url.path.startswith('/api/v1/integration'):
+            return await call_next(request)
+
+        # Get user ID from request state (set by JWT middleware)
+        try:
+            user_id = (
+                getattr(request.state, 'user_id', None)
+                if hasattr(request, 'state')
+                else None
+            )
+        except AttributeError:
+            user_id = None
+
+        if not user_id:
+            logger.warning('No user_id found in request state for integration API')
+            return JSONResponse(
+                status_code=401,
+                content={'detail': 'Authentication required'},
+            )
+
+        # Check rate limit
+        is_allowed = await self.rate_limiter.is_allowed(user_id)
+
+        if not is_allowed:
+            logger.warning(f'Rate limit exceeded for user {user_id}')
+            return JSONResponse(
+                status_code=429,
+                content={
+                    'detail': 'Rate limit exceeded. Too many requests from this user.',
+                    'retry_after': self.rate_limiter.seconds,
+                },
+                headers={'Retry-After': str(self.rate_limiter.seconds)},
+            )
+
+        return await call_next(request)
+
+
 class AttachConversationMiddleware(SessionMiddlewareInterface):
     def __init__(self, app):
         self.app = app
