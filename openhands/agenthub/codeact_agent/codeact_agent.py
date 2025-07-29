@@ -872,17 +872,26 @@ Before proceeding with any task, analyze the provided knowledge base using this 
    - Quote relevant sections and explain their connection to the task
 
 2. **Completeness Analysis**:
-   - Determine if the knowledge base provides sufficient information
-   - Identify specific gaps or missing elements
-   - Assess what additional information might be needed
+   - Determine whether the knowledge base provides all required information to fully answer the query
+   - Explicitly **identify any gaps, ambiguities, or missing elements**
+   - If any information is missing or insufficient, you **must** clearly specify:
+     - What specific data is missing
+     - Why it is necessary
+     - Where it might be found or how to obtain it
+     - If tools (e.g., web access, APIs, plugins) are available, you **must use them to retrieve the missing information**
 
 3. **Strategic Decision**:
-   - **Sufficient knowledge**: Complete the task using only the knowledge base
-   - **Partial knowledge**: Combine knowledge base information with targeted external research
-   - **Insufficient knowledge**: Clearly specify what external information is required and why
+   - **If the knowledge is fully sufficient**: Proceed with the task using only the knowledge base
+   - **If there is a partial gap**: You **must use available tools to perform targeted external research** and integrate the results before continuing
+   - **If the knowledge is insufficient overall**: Clearly explain what critical information is missing and **trigger a tool-based search to obtain it**, or state that the task cannot proceed until such data is acquired
+
+**Strict Requirement**: Missing or incomplete data **must never be ignored or bypassed**. You are required to either:
+- Retrieve the needed data using the available tools (e.g., `web`, APIs, file access), or
+- Explicitly declare the task blocked and explain why tool-based retrieval failed or is not possible
 
 **Knowledge Base:**
 {knowledge_content}
 
-**Note**: This evaluation ensures relevant use of available knowledge while maintaining flexibility to seek additional information when genuinely needed."""
+**Note**: This evaluation enforces precise, tool-assisted reasoning with no tolerance for silent failure due to missing data.
+"""
         return ''
