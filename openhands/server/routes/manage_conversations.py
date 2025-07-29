@@ -354,6 +354,8 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                 metadata['raw_followup_conversation_id'] = raw_followup_conversation_id
             if data.research_mode and data.research_mode == ResearchMode.FOLLOW_UP:
                 metadata['research_mode'] = ResearchMode.FOLLOW_UP
+            if data.space_section_id:
+                metadata['space_section_id'] = data.space_section_id
             start_time = time.time()
             await conversation_module._update_conversation_visibility(
                 conversation_id,
@@ -413,7 +415,7 @@ async def search_conversations(
     # get conversation visibility by user id
     visible_conversations = (
         await conversation_module._get_conversation_visibility_by_user_id(
-            user_id, page, limit, keyword
+            user_id, page, limit, keyword, show_section_conversations=False
         )
     )
     if len(visible_conversations['items']) == 0:
