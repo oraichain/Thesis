@@ -18,9 +18,11 @@ from openhands.server.middleware import (  # noqa
     AttachConversationMiddleware,
     CacheControlMiddleware,
     InMemoryRateLimiter,
+    IntegrationRateLimitMiddleware,
     JWTAuthMiddleware,
     ProviderTokenMiddleware,
     RateLimitMiddleware,
+    UserBasedRateLimiter,
 )
 
 base_app.middleware('http')(AttachConversationMiddleware(base_app))
@@ -31,6 +33,21 @@ base_app.middleware('http')(AttachConversationMiddleware(base_app))
 # os.getenv('RUN_MODE') != 'DEV' and base_app.add_middleware(
 #     CheckUserActivationMiddleware
 # )
+
+# Add integration-specific rate limiting
+INTEGRATION_RATE_LIMIT_REQUESTS = int(
+    os.getenv('INTEGRATION_RATE_LIMIT_REQUESTS') or 10
+)
+INTEGRATION_RATE_LIMIT_SECONDS = int(os.getenv('INTEGRATION_RATE_LIMIT_SECONDS') or 60)
+integration_rate_limiter = UserBasedRateLimiter(
+    requests=INTEGRATION_RATE_LIMIT_REQUESTS,
+    seconds=INTEGRATION_RATE_LIMIT_SECONDS,
+    sleep_seconds=0,  # Reject immediately instead of sleeping
+)
+base_app.add_middleware(
+    IntegrationRateLimitMiddleware, rate_limiter=integration_rate_limiter
+)
+
 base_app.add_middleware(JWTAuthMiddleware)
 
 
