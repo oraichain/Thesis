@@ -1,9 +1,10 @@
 import asyncio
 import copy
+import json
 import os
 import traceback
 import uuid
-from typing import Callable, ClassVar, Type
+from typing import Any, Callable, ClassVar, Type
 
 import litellm  # noqa
 from litellm.exceptions import (  # noqa
@@ -82,7 +83,6 @@ from openhands.events.observation.credit import CreditErrorObservation
 from openhands.events.serialization.event import (
     _extract_content_from_event,
     _extract_file_text_from_tool_call,
-    _extract_from_edit_event,
     _extract_from_finish_event,
     _extract_from_message_event,
     event_to_dict,
@@ -1258,6 +1258,9 @@ class AgentController:
             )
 
             final_result = None
+
+            # Try to reconstruct final file content first
+
             finish_events = []
             edit_events = []
             message_events = []
@@ -1281,15 +1284,12 @@ class AgentController:
 
             if edit_events:
                 self.log('info', 'Prioritizing edit events for final result extraction')
-                for event_dict in (
-                    edit_events
-                ):  # edit_events are already in reverse order (newest first)
-                    result = _extract_from_edit_event(event_dict)
-                    if result:
-                        final_result = result
-                        break
+                final_file_content = self._reconstruct_final_file_content(recent_events)
 
-            # If no edit events or couldn't extract from edit, try finish events
+                if final_file_content:
+                    final_result = final_file_content
+
+                # If no edit events or couldn't extract from edit, try finish events
             if not final_result and finish_events:
                 self.log('info', 'Trying finish events for final result extraction')
                 for event_dict in finish_events:
@@ -1298,12 +1298,10 @@ class AgentController:
                         final_result = result
                         break
 
-            # If still no result, try message events
+                # If still no result, try message events
             if not final_result and message_events:
                 self.log('info', 'Trying message events for final result extraction')
-                for event_dict in (
-                    message_events
-                ):  # message_events are already in reverse order (newest first)
+                for event_dict in message_events:
                     result = _extract_from_message_event(event_dict)
                     if result:
                         final_result = result
@@ -1317,6 +1315,114 @@ class AgentController:
 
         except Exception as e:
             self.log('error', f'Error extracting final result: {str(e)}')
+
+    def _reconstruct_final_file_content(self, events: list[Event]) -> str | None:
+        """
+        Reconstruct final file content by tracking file operations (create/edit).
+        Prioritizes markdown files and returns the final content after all edits.
+        """
+        try:
+            # Track file operations by path
+            file_operations: dict[str, Any] = {}  # path -> list of operations
+
+            for event in reversed(events):  # Process in chronological order
+                try:
+                    event_dict = event_to_dict(event)
+                    source = event_dict.get('source')
+                    action = event_dict.get('action')
+
+                    if source != 'agent' or action != 'edit':
+                        continue
+
+                    # Extract file operation details
+                    tool_call_metadata = event_dict.get('tool_call_metadata', {})
+                    model_response = tool_call_metadata.get('model_response', {})
+                    choices = model_response.get('choices', [])
+
+                    if not choices or 'message' not in choices[0]:
+                        continue
+
+                    message_obj = choices[0]['message']
+                    tool_calls = message_obj.get('tool_calls', [])
+
+                    if not tool_calls or 'function' not in tool_calls[0]:
+                        continue
+
+                    arguments_str = tool_calls[0]['function'].get('arguments')
+                    if not arguments_str:
+                        continue
+
+                    arguments_json = json.loads(arguments_str)
+                    path = arguments_json.get('path')
+                    command = arguments_json.get('command')
+
+                    if not path:
+                        continue
+
+                    # Initialize file operations for this path
+                    if path not in file_operations:
+                        file_operations[path] = []
+
+                    operation = {
+                        'command': command,
+                        'file_text': arguments_json.get('file_text'),
+                        'old_str': arguments_json.get('old_str'),
+                        'new_str': arguments_json.get('new_str'),
+                        'timestamp': event_dict.get('timestamp'),
+                    }
+                    file_operations[path].append(operation)
+
+                except Exception:
+                    continue
+
+            # Find the most likely result file (prioritize .md files)
+            target_path = None
+            max_operations = 0
+
+            for path, operations in file_operations.items():
+                if len(operations) > max_operations:
+                    max_operations = len(operations)
+                    target_path = path
+                # Prioritize markdown files
+                elif (
+                    path.endswith(('.md', '.txt'))
+                    and len(operations) >= max_operations // 2
+                ):
+                    target_path = path
+
+            if not target_path or target_path not in file_operations:
+                return None
+
+            operations = file_operations[target_path]
+            final_content = None
+
+            # Reconstruct final content
+            for op in operations:
+                if op['command'] == 'create' and op['file_text']:
+                    final_content = op['file_text']
+                elif (
+                    op['command'] == 'str_replace'
+                    and final_content
+                    and op['old_str']
+                    and op['new_str']
+                ):
+                    # Apply string replacement
+                    if op['old_str'] in final_content:
+                        final_content = final_content.replace(
+                            op['old_str'], op['new_str'], 1
+                        )
+
+            if final_content and len(final_content.strip()) > 50:
+                self.log(
+                    'info',
+                    f'Reconstructed final content from {target_path} ({len(operations)} operations)',
+                )
+                return final_content
+
+        except Exception as e:
+            self.log('error', f'Error reconstructing file content: {str(e)}')
+
+        return None
 
     async def _save_final_result_to_database(
         self, session_id: str, final_result: str

@@ -753,20 +753,8 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
-        #  # Add knowledge base priority instruction to system message (static, cacheable)
-        kb_instruction = self.get_knowledge_base_instruction()
-        if kb_instruction and messages:
-            system_msg = messages[0]
-            if system_msg.role == 'system':
-                system_msg.content.append(TextContent(text=kb_instruction))
 
         # Use ConversationMemory to process events first (static cached content)
-        messages = self.conversation_memory.process_events(
-            condensed_history=events,
-            initial_messages=messages,
-            max_message_chars=self.llm.config.max_message_chars,
-            vision_is_active=self.llm.vision_is_active(),
-        )
 
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
@@ -779,6 +767,13 @@ class CodeActAgent(Agent):
             messages.append(
                 Message(role='user', content=[TextContent(text=user_context)])
             )
+        messages = self.conversation_memory.process_events(
+            condensed_history=events,
+            initial_messages=messages,
+            max_message_chars=self.llm.config.max_message_chars,
+            vision_is_active=self.llm.vision_is_active(),
+        )
+
         messages = self._enhance_messages(messages)
 
         if self.llm.is_caching_prompt_active():
@@ -837,23 +832,57 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        convert_knowledge_to_list = [
-            self.knowledge_base[k] for k in self.knowledge_base
-        ]
-        if convert_knowledge_to_list and len(convert_knowledge_to_list) > 0:
-            return f"""***HERE IS THE KNOWLEDGE BASE***\n<knowledge_base>
-{json.dumps(convert_knowledge_to_list, ensure_ascii=False, indent=2)}
-</knowledge_base>"""
-        return ''
+        knowledge_content = []
+        # Handle x_results
+        if (
+            'x_results' in self.knowledge_base
+            and len(self.knowledge_base['x_results']) > 0
+        ):
+            x_results = [
+                self.knowledge_base['x_results'][k]
+                for k in self.knowledge_base['x_results']
+            ]
+            if x_results:
+                knowledge_content.append(f"""<XResult>
+Description: Here is the tweets that are related to the task, we can consider it is also the knowledge base.
+{json.dumps(x_results, ensure_ascii=False, indent=2)}
+</XResult>""")
+        # Handle knowledge_base_results
+        if (
+            'knowledge_base_results' in self.knowledge_base
+            and len(self.knowledge_base['knowledge_base_results']) > 0
+        ):
+            kb_results = [
+                self.knowledge_base['knowledge_base_results'][k]
+                for k in self.knowledge_base['knowledge_base_results']
+            ]
+            if kb_results:
+                knowledge_content.append(f"""<KnowledgeBase>
+{json.dumps(kb_results, ensure_ascii=False, indent=2)}
+</KnowledgeBase>""")
 
-    def get_knowledge_base_instruction(self) -> str:
-        """Get knowledge base priority instruction for system prompt (cacheable)"""
-        if bool(self.knowledge_base and len(self.knowledge_base) > 0):
-            return """
-Knowledge Base Integration
-- Initial Assessment: Check knowledge base relevance to the task first
-- If Sufficient: Use KB as primary source and complete task
-- If Insufficient: Combine KB content with external research for comprehensive results
-- Avoid Hallucination: Only reference KB when it contains relevant information
-"""
+        if len(knowledge_content) > 0:
+            return f"""
+**KNOWLEDGE BASE EVALUATION PROTOCOL**
+
+Before proceeding with any task, analyze the provided knowledge base using this framework:
+
+1. **Relevance Assessment**:
+   - Identify which information from the knowledge base relates to the current query
+   - Quote relevant sections and explain their connection to the task
+
+2. **Completeness Analysis**:
+   - Determine if the knowledge base provides sufficient information
+   - Identify specific gaps or missing elements
+   - Assess what additional information might be needed
+
+3. **Strategic Decision**:
+   - **Sufficient knowledge**: Complete the task using only the knowledge base
+   - **Partial knowledge**: Combine knowledge base information with targeted external research
+   - **Insufficient knowledge**: Clearly specify what external information is required and why
+
+**Knowledge Base:**
+{knowledge_content}
+
+**Note**: This evaluation ensures relevant use of available knowledge while maintaining flexibility to seek additional information when genuinely needed."""
         return ''
