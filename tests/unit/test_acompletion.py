@@ -47,13 +47,19 @@ def mock_response():
 
 @contextmanager
 def _patch_http():
-    with patch('openhands.llm.llm.httpx.get', MagicMock()) as mock_http:
-        mock_http.json.return_value = {
-            'data': [
-                {'model_name': 'some_model'},
-                {'model_name': 'another_model'},
-            ]
-        }
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        'data': [
+            {'model_name': 'some_model'},
+            {'model_name': 'another_model'},
+        ]
+    }
+
+    mock_client = MagicMock()
+    mock_client.get.return_value = mock_response
+
+    with patch('openhands.llm.llm.httpx.Client') as mock_client_class:
+        mock_client_class.return_value.__enter__.return_value = mock_client
         yield
 
 
