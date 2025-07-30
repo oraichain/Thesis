@@ -21,7 +21,7 @@ class TestUserBasedRateLimiter:
         assert limiter.requests == 60
         assert limiter.seconds == 60
         assert limiter.sleep_seconds == 1
-        assert len(limiter.history) == 0
+        assert len(limiter.storage.history) == 0
 
     def test_initialization_with_custom_values(self):
         """Test that the rate limiter initializes correctly with custom values."""
@@ -29,7 +29,7 @@ class TestUserBasedRateLimiter:
         assert limiter.requests == 10
         assert limiter.seconds == 30
         assert limiter.sleep_seconds == 2
-        assert len(limiter.history) == 0
+        assert len(limiter.storage.history) == 0
 
     @pytest.mark.asyncio
     async def test_allows_requests_under_limit(self):
@@ -43,7 +43,7 @@ class TestUserBasedRateLimiter:
             assert result is True
 
         # Verify history is tracked correctly
-        assert len(limiter.history[user_id]) == 5
+        assert len(limiter.storage.history[user_id]) == 5
 
     @pytest.mark.asyncio
     async def test_blocks_requests_over_limit(self):
@@ -61,7 +61,7 @@ class TestUserBasedRateLimiter:
         assert result is False
 
         # Verify history still contains the blocked request
-        assert len(limiter.history[user_id]) == 3
+        assert len(limiter.storage.history[user_id]) == 3
 
     @pytest.mark.asyncio
     async def test_blocks_requests_over_double_limit(self):
@@ -71,7 +71,7 @@ class TestUserBasedRateLimiter:
 
         # Manually add requests to exceed double limit
         now = datetime.now()
-        limiter.history[user_id] = [now] * 5  # 5 requests when limit is 2
+        limiter.storage.history[user_id] = [now] * 5  # 5 requests when limit is 2
 
         result = await limiter.is_allowed(user_id)
         assert result is False
@@ -94,7 +94,7 @@ class TestUserBasedRateLimiter:
 
         assert result is True
         # Should have slept for approximately 0.1 seconds
-        assert (end_time - start_time).total_seconds() >= 0.1
+        assert abs((end_time - start_time).total_seconds() - 0.1) < 0.01
 
     @pytest.mark.asyncio
     async def test_different_users_have_separate_limits(self):
@@ -114,8 +114,8 @@ class TestUserBasedRateLimiter:
         assert await limiter.is_allowed(user2) is False
 
         # Verify separate history tracking
-        assert len(limiter.history[user1]) == 3
-        assert len(limiter.history[user2]) == 3
+        assert len(limiter.storage.history[user1]) == 3
+        assert len(limiter.storage.history[user2]) == 3
 
     @pytest.mark.asyncio
     async def test_rejects_empty_user_id(self):
@@ -125,7 +125,8 @@ class TestUserBasedRateLimiter:
         assert await limiter.is_allowed('') is False
         assert await limiter.is_allowed(None) is False
 
-    def test_cleans_old_requests(self):
+    @pytest.mark.asyncio
+    async def test_cleans_old_requests(self):
         """Test that old requests are cleaned up properly."""
         limiter = UserBasedRateLimiter(requests=5, seconds=1)  # 1 second window
         user_id = 'test_user'
@@ -133,14 +134,15 @@ class TestUserBasedRateLimiter:
         # Add some old requests
         old_time = datetime.now() - timedelta(seconds=2)
         recent_time = datetime.now() - timedelta(seconds=0.5)
-        limiter.history[user_id] = [old_time, old_time, recent_time]
+        limiter.storage.history[user_id] = [old_time, old_time, recent_time]
 
         # Clean old requests
-        limiter._clean_old_requests(user_id)
+        cutoff = datetime.now() - timedelta(seconds=1)
+        await limiter.storage.clean_old_requests(user_id, cutoff)
 
         # Should only have 1 recent request left
-        assert len(limiter.history[user_id]) == 1
-        assert limiter.history[user_id][0] == recent_time
+        assert len(limiter.storage.history[user_id]) == 1
+        assert limiter.storage.history[user_id][0] == recent_time
 
     @pytest.mark.asyncio
     async def test_rate_limit_window_reset(self):
