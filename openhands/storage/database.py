@@ -468,7 +468,12 @@ class DatabaseFileStore(FileStore):
                 return [event[0] for event in cursor.fetchall()]
 
     def _get_events_by_action(
-        self, conversation_id: str, actions: List[str], limit: int, order_by: str
+        self,
+        conversation_id: str,
+        actions: List[str],
+        limit: int,
+        order_by: str,
+        observations: List[str] | None = None,
     ) -> List[dict]:
         """Get events from conversation_events table filtered by action types.
 
@@ -487,6 +492,11 @@ class DatabaseFileStore(FileStore):
                 action_conditions = []
                 for action in actions:
                     action_conditions.append(f"metadata->>'action' = '{action}'")
+                if observations and len(observations) > 0:
+                    for observation in observations:
+                        action_conditions.append(
+                            f"metadata->>'observation' = '{observation}'"
+                        )
 
                 action_filter = ' OR '.join(action_conditions)
 
