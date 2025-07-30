@@ -20,6 +20,10 @@ from openhands.server.thesis_auth import (
     get_user_detail_from_thesis_auth_server,
 )
 from openhands.server.types import SessionMiddlewareInterface
+from openhands.server.utils.ratelimit_storage import (
+    InMemoryRateLimiterStorage,
+    RateLimiterStorage,
+)
 
 
 class LocalhostCORSMiddleware(CORSMiddleware):
@@ -131,7 +135,11 @@ class UserBasedRateLimiter:
     """Rate limiter that tracks requests per user ID extracted from access tokens."""
 
     def __init__(
-        self, requests: int = 60, seconds: float = 60, sleep_seconds: float = 1
+        self,
+        requests: int = 60,
+        seconds: float = 60,
+        sleep_seconds: float = 1,
+        storage: RateLimiterStorage | None = None,
     ):
         """
         Initialize the rate limiter.
@@ -140,17 +148,12 @@ class UserBasedRateLimiter:
             requests: Maximum number of requests allowed
             seconds: Time window for the rate limit
             sleep_seconds: Seconds to sleep when rate limit is exceeded (0 to reject immediately)
+            storage: Storage backend to use (if None, will use in-memory storage)
         """
         self.requests = requests
         self.seconds = seconds
         self.sleep_seconds = sleep_seconds
-        self.history: dict[str, list[datetime]] = defaultdict(list)
-
-    def _clean_old_requests(self, user_id: str) -> None:
-        """Remove old requests outside the time window."""
-        now = datetime.now()
-        cutoff = now - timedelta(seconds=self.seconds)
-        self.history[user_id] = [ts for ts in self.history[user_id] if ts > cutoff]
+        self.storage = storage or InMemoryRateLimiterStorage()
 
     async def is_allowed(self, user_id: str) -> bool:
         """
@@ -166,24 +169,33 @@ class UserBasedRateLimiter:
             return False
 
         now = datetime.now()
+        cutoff = now - timedelta(seconds=self.seconds)
 
-        # Clean old requests
-        self._clean_old_requests(user_id)
+        try:
+            # Clean old requests
+            await self.storage.clean_old_requests(user_id, cutoff)
 
-        # Add current request
-        self.history[user_id].append(now)
+            # Add current request
+            await self.storage.add_request(user_id, now)
 
-        # Check if over the limit
-        if len(self.history[user_id]) > self.requests * 2:
-            return False
-        elif len(self.history[user_id]) > self.requests:
-            if self.sleep_seconds > 0:
-                await asyncio.sleep(self.sleep_seconds)
-                return True
-            else:
+            # Check if over the limit
+            request_count = await self.storage.get_request_count(user_id)
+
+            if request_count > self.requests * 2:
                 return False
+            elif request_count > self.requests:
+                if self.sleep_seconds > 0:
+                    await asyncio.sleep(self.sleep_seconds)
+                    return True
+                else:
+                    return False
 
-        return True
+            return True
+        except Exception as e:
+            logger.error(f'Storage error in rate limiter for user {user_id}: {e}')
+            # In case of storage errors, default to allowing the request
+            # This prevents storage failures from blocking all traffic
+            return True
 
 
 class IntegrationRateLimitMiddleware(BaseHTTPMiddleware):
