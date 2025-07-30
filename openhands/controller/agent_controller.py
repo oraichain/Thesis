@@ -326,12 +326,21 @@ class AgentController:
                 err_id = 'STATUS$ERROR_LLM_CONTENT_POLICY_VIOLATION'
                 self.state.last_error = err_id
             elif isinstance(e, RateLimitError):
-                await self.set_agent_state_to(AgentState.RATE_LIMITED)
+                await self._handle_error_state(AgentState.RATE_LIMITED)
                 return
             self.status_callback('error', err_id, self.state.last_error)
 
         # Set the agent state to ERROR after storing the reason
-        await self.set_agent_state_to(AgentState.ERROR)
+        await self._handle_error_state(AgentState.ERROR)
+
+    async def _handle_error_state(self, state: AgentState) -> None:
+        """Handle error state by saving error result and setting agent state."""
+        error_result = json.dumps({'error': self.state.last_error})
+        # Execute both operations concurrently
+        await asyncio.gather(
+            self._save_final_result_to_database(self.id, error_result),
+            self.set_agent_state_to(state),
+        )
 
     def step(self):
         asyncio.create_task(self._step_with_exception_handling())
@@ -339,6 +348,7 @@ class AgentController:
     async def _step_with_exception_handling(self):
         try:
             await self._step()
+
         except Exception as e:
             self.log(
                 'error',
@@ -1294,8 +1304,7 @@ class AgentController:
 
                 if final_file_content:
                     final_result = final_file_content
-
-            # If no edit events or couldn't extract from edit, try read events for .md/.txt files
+                # If no edit events or couldn't extract from edit, try read events for .md/.txt files
             if not final_result and read_events:
                 self.log(
                     'info',
@@ -1306,8 +1315,6 @@ class AgentController:
                     if result:
                         final_result = result
                         break
-
-                # If no read events or couldn't extract from read, try finish events
             if not final_result and finish_events:
                 self.log('info', 'Trying finish events for final result extraction')
                 for event_dict in finish_events:
