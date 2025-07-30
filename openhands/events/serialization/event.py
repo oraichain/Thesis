@@ -337,6 +337,80 @@ def _extract_from_message_event(event_dict: dict) -> str | None:
     return None
 
 
+def _extract_from_read_event(event_dict: dict) -> str | None:
+    """Extract content from read action/observation events for .md and .txt files only."""
+    # Check if this is a read observation
+    if event_dict.get('observation') != 'read':
+        return None
+
+    # Check file path from extras
+    extras = event_dict.get('extras', {})
+    path = extras.get('path', '')
+
+    # Only process .md and .txt files, exclude coding files
+    if not path or not isinstance(path, str):
+        return None
+
+    # Check file extension - only .md and .txt
+    valid_extensions = ('.md', '.txt')
+    if not any(path.lower().endswith(ext) for ext in valid_extensions):
+        return None
+
+    # Exclude common coding file patterns even if they have .md/.txt extension
+    coding_patterns = [
+        'README.md',
+        'readme.md',
+        'CHANGELOG.md',
+        'changelog.md',
+        'LICENSE.md',
+        'license.md',
+        'CONTRIBUTING.md',
+        'contributing.md',
+        'requirements.txt',
+        'package.json',
+        'setup.py',
+        'Dockerfile',
+    ]
+    filename = path.split('/')[-1] if '/' in path else path
+    if any(pattern.lower() in filename.lower() for pattern in coding_patterns):
+        return None
+
+    # Extract content
+    content = event_dict.get('content', '')
+    if not content or len(content.strip()) < 10:
+        return None
+
+    # Clean up the content - remove the leading "Here's the result of running..." message
+    lines = content.split('\n')
+    cleaned_lines = []
+    start_processing = False
+
+    for line in lines:
+        # Look for numbered lines (from cat -n output) or start of actual content
+        if line.strip() and (
+            line.strip()[0].isdigit()
+            or start_processing
+            or not line.strip().startswith('     ')
+        ):
+            start_processing = True
+            # Remove line numbers from cat -n output
+            if '\t' in line and line.strip()[0].isdigit():
+                # Extract content after the line number and tab
+                parts = line.split('\t', 1)
+                if len(parts) > 1:
+                    cleaned_lines.append(parts[1])
+            else:
+                cleaned_lines.append(line)
+
+    cleaned_content = '\n'.join(cleaned_lines).strip()
+
+    # Return content if it's substantial
+    if len(cleaned_content) > 50:
+        return cleaned_content
+
+    return None
+
+
 def _try_extract_json(content: str) -> dict | None:
     """Try to extract JSON from content using various patterns."""
     if not content:

@@ -291,6 +291,7 @@ class EventStore:
     def get_events_by_action(
         self,
         actions: list[str],
+        observations: list[str] | None = None,
         limit: int = 100,
         reverse: bool = True,
     ) -> list[Event]:
@@ -319,7 +320,7 @@ class EventStore:
             # Use database-specific filtering for better performance
             order_by = 'created_at DESC' if reverse else 'created_at ASC'
             events = db_file_store._get_events_by_action(
-                self.sid, actions, limit, order_by
+                self.sid, actions, limit, order_by, observations
             )
             return [event_from_dict(event_dict) for event_dict in events if event_dict]
         else:
