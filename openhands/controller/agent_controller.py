@@ -85,6 +85,7 @@ from openhands.events.serialization.event import (
     _extract_file_text_from_tool_call,
     _extract_from_finish_event,
     _extract_from_message_event,
+    _extract_from_read_event,
     event_to_dict,
     event_to_trajectory,
     truncate_content,
@@ -1252,6 +1253,7 @@ class AgentController:
             recent_events = list(
                 self.event_stream.get_events_by_action(
                     actions=['edit', 'finish', 'message'],
+                    observations=['read'],
                     limit=20,
                     reverse=True,
                 )
@@ -1264,6 +1266,7 @@ class AgentController:
             finish_events = []
             edit_events = []
             message_events = []
+            read_events = []
             for event in recent_events:
                 event_dict = None
                 try:
@@ -1273,12 +1276,15 @@ class AgentController:
 
                 source = event_dict.get('source')
                 action = event_dict.get('action')
+                observation = event_dict.get('observation')
 
                 if source == 'agent':
                     if action == 'finish':
                         finish_events.append(event_dict)
                     elif action == 'edit':
                         edit_events.append(event_dict)
+                    elif observation == 'read':
+                        read_events.append(event_dict)
                     elif _extract_content_from_event(event_dict):
                         message_events.append(event_dict)
 
@@ -1288,8 +1294,17 @@ class AgentController:
 
                 if final_file_content:
                     final_result = final_file_content
-
-                # If no edit events or couldn't extract from edit, try finish events
+                # If no edit events or couldn't extract from edit, try read events for .md/.txt files
+            if not final_result and read_events:
+                self.log(
+                    'info',
+                    'Trying read events for final result extraction (.md/.txt files)',
+                )
+                for event_dict in read_events:
+                    result = _extract_from_read_event(event_dict)
+                    if result:
+                        final_result = result
+                        break
             if not final_result and finish_events:
                 self.log('info', 'Trying finish events for final result extraction')
                 for event_dict in finish_events:
@@ -1380,14 +1395,11 @@ class AgentController:
             max_operations = 0
 
             for path, operations in file_operations.items():
+                if not path.endswith(('.md', '.txt')):
+                    continue
+
                 if len(operations) > max_operations:
                     max_operations = len(operations)
-                    target_path = path
-                # Prioritize markdown files
-                elif (
-                    path.endswith(('.md', '.txt'))
-                    and len(operations) >= max_operations // 2
-                ):
                     target_path = path
 
             if not target_path or target_path not in file_operations:
