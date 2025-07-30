@@ -412,8 +412,20 @@ async def search_conversations(
                 conversation_id = getattr(
                     conversation, 'conversation_id', None
                 ) or conversation.get('conversation_id')
-                title = getattr(conversation, 'title', None) or conversation.get(
-                    'title', ''
+                # Get title with priority: metadata -> title field -> empty string
+                metadata_title = None
+                if hasattr(conversation, 'metadata') and conversation.metadata:
+                    metadata_title = (
+                        conversation.metadata.get('title')
+                        if isinstance(conversation.metadata, dict)
+                        else None
+                    )
+
+                title = (
+                    metadata_title
+                    or getattr(conversation, 'title', None)
+                    or conversation.get('title', '')
+                    or ''
                 )
                 user_id = getattr(conversation, 'user_id', None) or conversation.get(
                     'user_id'
@@ -723,6 +735,7 @@ async def _get_conversation_info(
     is_running: bool,
 ) -> ConversationInfo | None:
     try:
+        # Get title with priority: metadata -> title field -> default
         title = conversation.title
         if not title:
             title = get_default_conversation_title(conversation.conversation_id)
