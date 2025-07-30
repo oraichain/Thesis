@@ -380,22 +380,40 @@ def _extract_from_read_event(event_dict: dict) -> str | None:
     if not content or len(content.strip()) < 10:
         return None
 
-    # Clean up the content - remove the leading "Here's the result of running..." message
     lines = content.split('\n')
     cleaned_lines = []
     start_processing = False
 
     for line in lines:
+        line_stripped = line.strip()
+
+        # Skip command description lines
+        if any(
+            keyword in line_stripped.lower()
+            for keyword in [
+                "here's the result of running",
+                'result of running',
+                'running `',
+                'command:',
+                'executing',
+                'running command',
+            ]
+        ):
+            continue
+
+        # Skip empty lines at the beginning
+        if not line_stripped and not start_processing:
+            continue
+
         # Look for numbered lines (from cat -n output) or start of actual content
-        if line.strip() and (
-            line.strip()[0].isdigit()
+        if line_stripped and (
+            line_stripped[0].isdigit()
             or start_processing
-            or not line.strip().startswith('     ')
+            or not line_stripped.startswith('     ')
         ):
             start_processing = True
             # Remove line numbers from cat -n output
-            if '\t' in line and line.strip()[0].isdigit():
-                # Extract content after the line number and tab
+            if '\t' in line and line_stripped[0].isdigit():
                 parts = line.split('\t', 1)
                 if len(parts) > 1:
                     cleaned_lines.append(parts[1])
@@ -404,8 +422,7 @@ def _extract_from_read_event(event_dict: dict) -> str | None:
 
     cleaned_content = '\n'.join(cleaned_lines).strip()
 
-    # Return content if it's substantial
-    if len(cleaned_content) > 50:
+    if len(cleaned_content) > 20:
         return cleaned_content
 
     return None
