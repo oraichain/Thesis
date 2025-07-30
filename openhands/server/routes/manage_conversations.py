@@ -340,6 +340,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                 x_device_id,
                 followup_discover_id,
                 data.research_mode,
+                space_section_id,
             )
             end_time = time.time()
             logger.info(f'Time taken to create thread: {end_time - start_time} seconds')

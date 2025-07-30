@@ -263,6 +263,7 @@ async def create_thread(
     x_device_id: str | None = None,
     followup_discover_id: str | None = None,
     research_mode: str | None = None,
+    space_section_id: int | None = None,
 ) -> dict | None:
     url = '/api/threads'
     payload = {'conversationId': conversation_id, 'prompt': initial_user_msg}
@@ -272,7 +273,8 @@ async def create_thread(
         headers['x-device-id'] = x_device_id
     if space_id is not None:
         payload['spaceId'] = str(space_id)
-
+    if space_section_id is not None:
+        payload['spaceSectionId'] = str(space_section_id)
     if follow_up_id is not None:
         payload['forkById'] = str(follow_up_id)
     if followup_discover_id is not None:
