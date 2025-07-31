@@ -1,3 +1,6 @@
+import json
+from typing import Any
+
 from openhands.events.event import Event
 from openhands.llm.metrics import Metrics, TokenUsage
 
@@ -52,3 +55,31 @@ def get_token_usage_for_event_id(
         if usage is not None:
             return usage
     return None
+
+
+def process_knowledge_base(knowledge_base: dict[str, Any]) -> str:
+    knowledge_content = []
+    if 'x_results' in knowledge_base and len(knowledge_base['x_results']) > 0:
+        x_results = [
+            knowledge_base['x_results'][k] for k in knowledge_base['x_results']
+        ]
+        if x_results:
+            knowledge_content.append(f"""<XResult>
+Description: Here is the tweets that are related to the task, we can consider it is also the knowledge base.
+{json.dumps(x_results, ensure_ascii=False, indent=2)}
+</XResult>""")
+    # Handle knowledge_base_results
+    if (
+        'knowledge_base_results' in knowledge_base
+        and len(knowledge_base['knowledge_base_results']) > 0
+    ):
+        kb_results = [
+            knowledge_base['knowledge_base_results'][k]
+            for k in knowledge_base['knowledge_base_results']
+        ]
+        if kb_results:
+            knowledge_content.append(f"""<KnowledgeBase>
+{json.dumps(kb_results, ensure_ascii=False, indent=2)}
+</KnowledgeBase>""")
+
+    return chr(10).join(knowledge_content)

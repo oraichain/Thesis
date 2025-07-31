@@ -832,40 +832,11 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        knowledge_content = []
-        # Handle x_results
-        if (
-            'x_results' in self.knowledge_base
-            and len(self.knowledge_base['x_results']) > 0
-        ):
-            x_results = [
-                self.knowledge_base['x_results'][k]
-                for k in self.knowledge_base['x_results']
-            ]
-            if x_results:
-                knowledge_content.append(f"""<XResult>
-Description: Here is the tweets that are related to the task, we can consider it is also the knowledge base.
-{json.dumps(x_results, ensure_ascii=False, indent=2)}
-</XResult>""")
-        # Handle knowledge_base_results
-        if (
-            'knowledge_base_results' in self.knowledge_base
-            and len(self.knowledge_base['knowledge_base_results']) > 0
-        ):
-            kb_results = [
-                self.knowledge_base['knowledge_base_results'][k]
-                for k in self.knowledge_base['knowledge_base_results']
-            ]
-            if kb_results:
-                knowledge_content.append(f"""<KnowledgeBase>
-{json.dumps(kb_results, ensure_ascii=False, indent=2)}
-</KnowledgeBase>""")
-
-        if len(knowledge_content) > 0:
-            return f"""
+        if self.check_has_knowledge_base():
+            return """
 **KNOWLEDGE BASE EVALUATION PROTOCOL**
 
-Before proceeding with any task, analyze the provided knowledge base using this framework:
+Before proceeding with any task, analyze the provided knowledge base using this framework (The knowledge base is provided in the <KnowledgeBase> and <XResult> tags):
 
 1. **Relevance Assessment**:
    - Identify which information from the knowledge base relates to the current query
@@ -888,9 +859,6 @@ Before proceeding with any task, analyze the provided knowledge base using this 
 **Strict Requirement**: Missing or incomplete data **must never be ignored or bypassed**. You are required to either:
 - Retrieve the needed data using the available tools (e.g., `web`, APIs, file access), or
 - Explicitly declare the task blocked and explain why tool-based retrieval failed or is not possible
-
-**Knowledge Base:**
-{knowledge_content}
 
 **Note**: This evaluation enforces precise, tool-assisted reasoning with no tolerance for silent failure due to missing data.
 """
