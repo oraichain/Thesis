@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
