@@ -681,7 +681,12 @@ class AgentController:
                 self.user_id,
             )
             if knowledge_base and len(knowledge_base) > 0:
-                self.agent.update_agent_knowledge_base(knowledge_base)
+                self.agent.update_agent_knowledge_base(
+                    {
+                        'knowledge_base_results': knowledge_base,
+                        'x_results': [],
+                    }
+                )
             else:
                 knowledge_base = await search_knowledge(
                     query,
@@ -695,7 +700,12 @@ class AgentController:
                 else:
                     events = await self._get_followup_conversation_events()
                     if events and len(events) > 0:
-                        self.agent.update_agent_knowledge_base(events)
+                        self.agent.update_agent_knowledge_base(
+                            {
+                                'knowledge_base_results': events,
+                                'x_results': [],
+                            }
+                        )
 
     async def _handle_message_action(self, action: MessageAction) -> None:
         """Handles message actions from the event stream.
