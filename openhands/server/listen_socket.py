@@ -78,7 +78,6 @@ async def connect(connection_id: str, environ):
         system_prompt = await get_system_prompt_from_thesis_auth_server(
             conversation_id, 'Bearer ' + (jwt_token or ''), x_device_id
         )
-        logger.info(f'system_prompt: {system_prompt}')
     else:
         system_prompt = None
 
