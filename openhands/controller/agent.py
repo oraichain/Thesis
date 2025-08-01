@@ -60,6 +60,7 @@ class Agent(ABC):
         self.streaming_llm: StreamingLLM | None = None
         self.output_config: dict | None = kwargs.get('output_config', None)
         self.space_id: int | None = None
+        self.thread_follow_up: int | None = None
 
     @property
     def complete(self) -> bool:
@@ -230,3 +231,6 @@ class Agent(ABC):
 
     def set_space_id(self, space_id: int) -> None:
         self.space_id = space_id
+
+    def set_thread_follow_up(self, thread_follow_up: int) -> None:
+        self.thread_follow_up = thread_follow_up
