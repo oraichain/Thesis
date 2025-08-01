@@ -833,9 +833,13 @@ class CodeActAgent(Agent):
     def _handle_knowledge_base(self) -> str:
         if self.space_id is not None or self.thread_follow_up is not None:
             return """
-**KNOWLEDGE BASE EVALUATION PROTOCOL**
+**MANDATORY KNOWLEDGE BASE PROTOCOL**
 
-Before proceeding with any task, analyze the provided knowledge base using this framework (the knowledge base content in <KnowledgeBase> and <XResult> tags):
+For EVERY user query, you MUST first analyze the knowledge base using this framework:
+
+**REQUIRED: Look for knowledge base content in these message tags:**
+- `<KnowledgeBase>` tags - contains knowledge base information
+- `<XResult>` tags - contains related tweets/social media data
 
 1. **Relevance Assessment**:
    - Identify which information from the knowledge base relates to the current query
@@ -859,7 +863,6 @@ Before proceeding with any task, analyze the provided knowledge base using this 
 - Retrieve the needed data using the available tools (e.g., `web`, APIs, file access), or
 - Explicitly declare the task blocked and explain why tool-based retrieval failed or is not possible
 
-
-**Note**: This evaluation enforces precise, tool-assisted reasoning with no tolerance for silent failure due to missing data.
+**Note**: This protocol applies to ALL user queries without exception. Always check the knowledge base tags first.
 """
         return ''
