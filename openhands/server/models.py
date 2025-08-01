@@ -38,7 +38,7 @@ Conversation = Table(
     Column('status', String, nullable=False, default='available'),
     Column('created_at', DateTime, default=func.now(), nullable=False),
     Column('updated_at', DateTime, default=func.now(), nullable=True),
-    Column('metadata', JSON, nullable=False),
+    # Column('metadata', JSON, nullable=True),
     Column('final_result', String, nullable=True),
 )
 
