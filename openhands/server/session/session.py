@@ -242,6 +242,8 @@ class Session:
 
         if output_config:
             agent.set_output_config(output_config)
+        if self.space_id:
+            agent.set_space_id(self.space_id)
 
         git_provider_tokens = None
         selected_repository = None
