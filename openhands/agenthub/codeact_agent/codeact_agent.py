@@ -832,8 +832,8 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        if self.check_has_knowledge_base():
-            return """
+        # if self.check_has_knowledge_base():
+        return """
 **KNOWLEDGE BASE REVIEW**
 
 For every task, first examine the knowledge base content in <KnowledgeBase> and <XResult> tags:
@@ -860,4 +860,4 @@ For every task, first examine the knowledge base content in <KnowledgeBase> and 
 
 Always consult the knowledge base before starting any task - no exceptions.
 """
-        return ''
+        # return ''
