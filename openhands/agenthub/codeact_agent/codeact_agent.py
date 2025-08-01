@@ -756,12 +756,6 @@ class CodeActAgent(Agent):
 
         # Use ConversationMemory to process events first (static cached content)
 
-        knowledge_base = self._handle_knowledge_base()
-        if knowledge_base:
-            messages.append(
-                Message(role='user', content=[TextContent(text=knowledge_base)])
-            )
-
         user_context = self._handle_format_output()
         if user_context:
             messages.append(
@@ -773,6 +767,12 @@ class CodeActAgent(Agent):
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
         )
+
+        knowledge_base = self._handle_knowledge_base()
+        if knowledge_base:
+            messages.append(
+                Message(role='user', content=[TextContent(text=knowledge_base)])
+            )
 
         messages = self._enhance_messages(messages)
 
@@ -832,8 +832,8 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        # if self.check_has_knowledge_base():
-        return """
+        if self.check_has_knowledge_base():
+            return """
 **KNOWLEDGE BASE REVIEW**
 
 For every task, first examine the knowledge base content in <KnowledgeBase> and <XResult> tags:
@@ -860,4 +860,4 @@ For every task, first examine the knowledge base content in <KnowledgeBase> and 
 
 Always consult the knowledge base before starting any task - no exceptions.
 """
-        # return ''
+        return ''
