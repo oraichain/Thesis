@@ -58,14 +58,10 @@ def get_token_usage_for_event_id(
 
 
 def _extract_content_from_item(item: dict[str, Any]) -> dict[str, Any]:
-    excluded_fields = {'chunkId', 'documentId', 'chunk_id', 'document_id'}
-
     # Extract only relevant content fields
-    extracted = {}
-    for key, value in item.items():
-        if key.lower() not in excluded_fields:
-            extracted[key] = value
-
+    extracted = item.copy()
+    del extracted['chunkId']
+    del extracted['documentId']
     return extracted
 
 

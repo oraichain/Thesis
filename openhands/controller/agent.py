@@ -59,6 +59,7 @@ class Agent(ABC):
         self.enable_streaming: bool = kwargs.get('enable_streaming', False)
         self.streaming_llm: StreamingLLM | None = None
         self.output_config: dict | None = kwargs.get('output_config', None)
+        self.space_id: int | None = None
 
     @property
     def complete(self) -> bool:
@@ -226,3 +227,6 @@ class Agent(ABC):
 
     def set_event_stream(self, event_stream) -> None:
         self.event_stream = event_stream
+
+    def set_space_id(self, space_id: int) -> None:
+        self.space_id = space_id

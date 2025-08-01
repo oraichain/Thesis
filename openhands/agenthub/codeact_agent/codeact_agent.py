@@ -753,6 +753,11 @@ class CodeActAgent(Agent):
                     for tool in self.search_tools
                 ],
             )
+        knowledge_base = self._handle_knowledge_base()
+        if knowledge_base:
+            messages.append(
+                Message(role='user', content=[TextContent(text=knowledge_base)])
+            )
 
         # Use ConversationMemory to process events first (static cached content)
 
@@ -767,12 +772,6 @@ class CodeActAgent(Agent):
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
         )
-
-        knowledge_base = self._handle_knowledge_base()
-        if knowledge_base:
-            messages.append(
-                Message(role='user', content=[TextContent(text=knowledge_base)])
-            )
 
         messages = self._enhance_messages(messages)
 
@@ -832,7 +831,7 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        if self.check_has_knowledge_base():
+        if self.space_id is not None:
             return """
 **KNOWLEDGE BASE REVIEW**
 

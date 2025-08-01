@@ -428,23 +428,13 @@ class ConversationModule:
                 Conversation.c.status != 'deleted', Conversation.c.status.is_(None)
             )
             if keyword:
+                # Search in both title field and metadata title field
+                title_search = Conversation.c.title.ilike(f'%{keyword}%')
+                metadata_title_search = Conversation.c.metadata.op('->>')(
+                    'title'
+                ).ilike(f'%{keyword}%')
                 base_filter = and_(
-                    base_filter,
-                    or_(
-                        Conversation.c.title.ilike(f'%{keyword}%'),
-                        and_(
-                            Conversation.c.metadata.isnot(None),
-                            Conversation.c.metadata.op('->>')('title').ilike(
-                                f'%{keyword}%'
-                            ),
-                        ),
-                    ),
-                )
-            if not show_section_conversations:
-                # Filter out conversations that have space_section_id in configs
-                base_filter = and_(
-                    base_filter,
-                    not_(Conversation.c.configs.op('?')('space_section_id')),
+                    base_filter, or_(title_search, metadata_title_search)
                 )
             if not show_section_conversations:
                 # Filter out conversations that have space_section_id in configs
