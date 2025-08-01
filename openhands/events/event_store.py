@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event import Event, EventSource
@@ -93,7 +93,6 @@ class EventStore(EventStoreABC):
         reverse: bool = False,
         filter: EventFilter | None = None,
         limit: int | None = None,
-        order_by: Optional[str] = None,
     ) -> Iterable[Event]:
         """
         Retrieve events from the event stream, optionally filtering out events of a given type
@@ -123,12 +122,7 @@ class EventStore(EventStoreABC):
 
         num_results = 0
         if shared_config.file_store == 'database':
-            if limit and order_by:
-                events = db_file_store._get_events_with_filters(
-                    self.sid, {'limit': limit, 'order_by': order_by}
-                )
-            else:
-                events = db_file_store._get_events_from_start_id(self.sid, start_id)
+            events = db_file_store._get_events_from_start_id(self.sid, start_id)
             for event_dict in events:
                 parsed_event = event_from_dict(event_dict)
                 if parsed_event and not should_filter(parsed_event):
@@ -205,12 +199,7 @@ class EventStore(EventStoreABC):
         if limit < 1 or limit > 100:
             raise ValueError('Limit must be between 1 and 100')
 
-        from openhands.core.config import load_app_config
-        from openhands.storage.database import db_file_store
-
-        config_app = load_app_config()
-
-        if config_app.file_store == 'database':
+        if shared_config.file_store == 'database':
             # Use database-specific filtering for better performance
             order_by = 'created_at DESC' if reverse else 'created_at ASC'
             events = db_file_store._get_events_by_action(

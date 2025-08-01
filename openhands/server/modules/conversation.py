@@ -446,6 +446,12 @@ class ConversationModule:
                     base_filter,
                     not_(Conversation.c.configs.op('?')('space_section_id')),
                 )
+            if not show_section_conversations:
+                # Filter out conversations that have space_section_id in configs
+                base_filter = and_(
+                    base_filter,
+                    not_(Conversation.c.configs.op('?')('space_section_id')),
+                )
 
             query = (
                 Conversation.select()
