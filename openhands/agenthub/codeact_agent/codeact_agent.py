@@ -831,7 +831,7 @@ class CodeActAgent(Agent):
         return ''
 
     def _handle_knowledge_base(self) -> str:
-        if self.space_id is not None:
+        if self.space_id is not None or self.thread_follow_up is not None:
             return """
 **KNOWLEDGE BASE REVIEW**
 
