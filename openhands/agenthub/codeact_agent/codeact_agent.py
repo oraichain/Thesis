@@ -833,30 +833,33 @@ class CodeActAgent(Agent):
     def _handle_knowledge_base(self) -> str:
         if self.space_id is not None or self.thread_follow_up is not None:
             return """
-**KNOWLEDGE BASE REVIEW**
+**KNOWLEDGE BASE EVALUATION PROTOCOL**
 
-For every task, first examine the knowledge base content in <KnowledgeBase> and <XResult> tags:
+Before proceeding with any task, analyze the provided knowledge base using this framework (the knowledge base content in <KnowledgeBase> and <XResult> tags):
 
-**Step 1: Check Relevance**
-- Find information in the knowledge base that relates to your current task
-- Reference specific sections and explain how they connect to what you need to do
+1. **Relevance Assessment**:
+   - Identify which information from the knowledge base relates to the current query
+   - Quote relevant sections and explain their connection to the task
 
-**Step 2: Assess Completeness**
-- Does the knowledge base contain everything needed to complete the task?
-- If information is missing or unclear, identify:
-  - What specific data you need
-  - Why it's required for the task
-  - How to obtain it using available tools
+2. **Completeness Analysis**:
+   - Determine whether the knowledge base provides all required information to fully answer the query
+   - Explicitly **identify any gaps, ambiguities, or missing elements**
+   - If any information is missing or insufficient, you **must** clearly specify:
+     - What specific data is missing
+     - Why it is necessary
+     - Where it might be found or how to obtain it
+     - If tools (e.g., web access, APIs, plugins) are available, you **must use them to retrieve the missing information**
 
-**Step 3: Take Action**
-- **Complete knowledge**: Use only the knowledge base to proceed
-- **Partial knowledge**: Use tools (web search, APIs, etc.) to fill gaps before continuing
-- **Insufficient knowledge**: Clearly state what's missing and attempt to retrieve it, or explain why the task cannot proceed
+3. **Strategic Decision**:
+   - **If the knowledge is fully sufficient**: Proceed with the task using only the knowledge base
+   - **If there is a partial gap**: You **must use available tools to perform targeted external research** and integrate the results before continuing
+   - **If the knowledge is insufficient overall**: Clearly explain what critical information is missing and **trigger a tool-based search to obtain it**, or state that the task cannot proceed until such data is acquired
 
-**CRITICAL RULE**: Never proceed with incomplete information. You must either:
-- Actively retrieve missing data using available tools, OR
-- Explicitly state the task is blocked and explain why
+**Strict Requirement**: Missing or incomplete data **must never be ignored or bypassed**. You are required to either:
+- Retrieve the needed data using the available tools (e.g., `web`, APIs, file access), or
+- Explicitly declare the task blocked and explain why tool-based retrieval failed or is not possible
 
-Always consult the knowledge base before starting any task - no exceptions.
+
+**Note**: This evaluation enforces precise, tool-assisted reasoning with no tolerance for silent failure due to missing data.
 """
         return ''
