@@ -435,9 +435,9 @@ async def search_conversations(
                     conversation, 'metadata', {}
                 ) or conversation.get('metadata', {})
                 title = (
-                    getattr(conversation, 'title', None)
+                    convo_metadata.get('title', '')
+                    or getattr(conversation, 'title', None)
                     or conversation.get('title', '')
-                    or convo_metadata.get('title', '')
                 )
                 user_id = getattr(conversation, 'user_id', None) or conversation.get(
                     'user_id'
