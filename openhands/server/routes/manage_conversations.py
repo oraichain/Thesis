@@ -577,9 +577,9 @@ async def update_conversation(
         if title:
             metadata.title = title
             await conversation_store.save_metadata(metadata)
-            await conversation_module._update_title_conversation(
-                conversation_id, metadata.title
-            )
+            # await conversation_module._update_title_conversation(
+            #     conversation_id, metadata.title
+            # )
         return True
     except FileNotFoundError:
         logger.warning(
