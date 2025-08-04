@@ -323,7 +323,7 @@ class ConversationMemory:
             return [
                 Message(
                     role=role,
-                    content=[TextContent(text=action.content)],
+                    content=[TextContent(text=action.content, cache_prompt=True)],
                 )
             ]
         elif isinstance(action, MessageAction):

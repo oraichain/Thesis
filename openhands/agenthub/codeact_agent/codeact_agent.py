@@ -756,7 +756,10 @@ class CodeActAgent(Agent):
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
             messages.append(
-                Message(role='user', content=[TextContent(text=knowledge_base)])
+                Message(
+                    role='user',
+                    content=[TextContent(text=knowledge_base, cache_prompt=True)],
+                )
             )
 
         # Use ConversationMemory to process events first (static cached content)
@@ -833,7 +836,7 @@ class CodeActAgent(Agent):
     def _handle_knowledge_base(self) -> str:
         if self.space_id is not None or self.thread_follow_up is not None:
             return """
-**MANDATORY KNOWLEDGE BASE PROTOCOL**
+**KNOWLEDGE BASE EVALUATION PROTOCOL**
 
 For EVERY user query, you MUST first analyze the knowledge base using this framework:
 
@@ -865,6 +868,6 @@ For EVERY user query, you MUST first analyze the knowledge base using this frame
 - Retrieve the needed data using the available tools (e.g., `web`, APIs, file access), or
 - Explicitly declare the task blocked and explain why tool-based retrieval failed or is not possible
 
-**Note**: This protocol applies to ALL user queries without exception. Always check the knowledge base tags first.
+**Note**: This protocol applies to ALL user queries without exception. Always check the knowledge base tags first.This evaluation enforces precise, tool-assisted reasoning with no tolerance for silent failure due to missing data.
 """
         return ''
