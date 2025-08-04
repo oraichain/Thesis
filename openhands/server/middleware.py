@@ -204,10 +204,15 @@ class IntegrationRateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, rate_limiter: UserBasedRateLimiter):
         super().__init__(app)
         self.rate_limiter = rate_limiter
+        self.public_paths = [
+            '/api/v1/integration/auth/token',
+        ]
 
     async def dispatch(self, request: Request, call_next):
         # Only apply rate limiting to integration API routes
         if not request.url.path.startswith('/api/v1/integration'):
+            return await call_next(request)
+        if request.url.path in self.public_paths:
             return await call_next(request)
 
         # Get user ID from request state (set by JWT middleware)
@@ -359,6 +364,9 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/api/user/status',
             '/api/invitation/validate',
             '/api/usecases',
+            '/docs',
+            '/openapi.json',
+            '/api/v1/integration/auth/token',
         ]
 
         self.public_path_patterns = [
@@ -431,6 +439,9 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations',
             '/api/options/update-empty-titles',
             '/api/usecases',
+            '/docs',
+            '/openapi.json',
+            '/api/v1/integration/auth/token',
         ]
 
         self.public_path_patterns = [

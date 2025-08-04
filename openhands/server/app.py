@@ -63,29 +63,61 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title='OpenHands',
-    description='OpenHands: Code Less, Make More',
+    title='Thesis API',
+    description='Thesis API',
     version=__version__,
     lifespan=_lifespan,
+    dependencies=None,
 )
 
 
-@app.get('/health')
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    from fastapi.openapi.utils import get_openapi
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    openapi_schema['components']['securitySchemes'] = {
+        'BearerAuth': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+            'description': 'Enter your Bearer token in the format: Bearer <your_token_here>',
+        }
+    }
+
+    openapi_schema['security'] = [{'BearerAuth': []}, {}]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
+@app.get('/health', include_in_schema=False)
 async def health():
     return 'OK'
 
 
-app.include_router(public_api_router)
-app.include_router(files_api_router)
-app.include_router(security_api_router)
-app.include_router(feedback_api_router)
-app.include_router(conversation_api_router)
-app.include_router(manage_conversation_api_router)
-app.include_router(settings_router)
-app.include_router(git_api_router)
-app.include_router(trajectory_router)
-app.include_router(auth_router)
-app.include_router(invitation_api_router)
-app.include_router(prompt_api_router)
-app.include_router(usecase_api_router)
+app.include_router(public_api_router, include_in_schema=False)
+app.include_router(files_api_router, include_in_schema=False)
+app.include_router(security_api_router, include_in_schema=False)
+app.include_router(feedback_api_router, include_in_schema=False)
+app.include_router(conversation_api_router, include_in_schema=False)
+app.include_router(manage_conversation_api_router, include_in_schema=False)
+app.include_router(settings_router, include_in_schema=False)
+app.include_router(git_api_router, include_in_schema=False)
+app.include_router(trajectory_router, include_in_schema=False)
+app.include_router(auth_router, include_in_schema=False)
+app.include_router(invitation_api_router, include_in_schema=False)
+app.include_router(prompt_api_router, include_in_schema=False)
+app.include_router(usecase_api_router, include_in_schema=False)
 app.include_router(integration_api_router)
