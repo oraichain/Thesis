@@ -16,6 +16,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from openhands.core.config.llm_config import LLMConfig
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema.research import ResearchMode
 from openhands.events.action.message import MessageAction
@@ -52,7 +53,10 @@ from openhands.server.types import LLMAuthenticationError, MissingSettingsError
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
 from openhands.storage.data_models.conversation_status import ConversationStatus
 from openhands.utils.async_utils import wait_all
-from openhands.utils.conversation_summary import get_default_conversation_title
+from openhands.utils.conversation_summary import (
+    generate_conversation_title,
+    get_default_conversation_title,
+)
 from openhands.utils.get_user_setting import get_user_setting
 
 app = APIRouter(prefix='/api')

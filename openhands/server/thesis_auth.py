@@ -523,3 +523,34 @@ async def check_feature_credit(
     except Exception as e:
         logger.exception('Unexpected error while check feature credit')
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def generate_access_token_from_api_key(api_key: str | None = None) -> dict:
+    if not api_key:
+        return {}
+    url = '/api/user-integration-keys/gen-access-token'
+    headers = {
+        'Content-Type': 'application/json',
+        'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
+        'Authorization': f'Bearer {api_key}',
+    }
+    response = await thesis_auth_client.post(url, headers=headers)
+    response_data = response.json()
+    if response_data.get('token'):
+        response_data['accessToken'] = response_data['token']
+    return response_data
+
+
+async def generate_access_token_from_refresh_token(
+    refresh_token: str | None = None,
+) -> dict:
+    if not refresh_token:
+        return {}
+    url = '/api/users/refresh-token'
+    headers = {
+        'Content-Type': 'application/json',
+        'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
+    }
+    payload = {'refreshToken': refresh_token}
+    response = await thesis_auth_client.post(url, headers=headers, json=payload)
+    return response.json()
