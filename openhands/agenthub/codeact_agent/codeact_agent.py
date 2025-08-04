@@ -755,12 +755,13 @@ class CodeActAgent(Agent):
             )
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
-            messages.append(
-                Message(
-                    role='user',
-                    content=[TextContent(text=knowledge_base, cache_prompt=True)],
-                )
-            )
+            messages[0].content.append(TextContent(text=knowledge_base))
+            # messages.append(
+            #     Message(
+            #         role='user',
+            #         content=[TextContent(text=knowledge_base)],
+            #     )
+            # )
 
         # Use ConversationMemory to process events first (static cached content)
 
