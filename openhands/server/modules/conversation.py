@@ -431,15 +431,16 @@ class ConversationModule:
             if keyword:
                 base_filter = and_(
                     base_filter,
-                    or_(
-                        Conversation.c.title.ilike(f'%{keyword}%'),
-                        and_(
-                            Conversation.c.metadata.isnot(None),
-                            Conversation.c.metadata.op('->>')('title').ilike(
-                                f'%{keyword}%'
-                            ),
-                        ),
-                    ),
+                    Conversation.c.title.ilike(f'%{keyword}%'),
+                    # or_(
+                    #     Conversation.c.title.ilike(f'%{keyword}%'),
+                    #     and_(
+                    #         Conversation.c.metadata.isnot(None),
+                    #         Conversation.c.metadata.op('->>')('title').ilike(
+                    #             f'%{keyword}%'
+                    #         ),
+                    #     ),
+                    # ),
                 )
             if not show_section_conversations:
                 # Filter out conversations that have space_section_id in configs
