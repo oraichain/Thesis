@@ -430,11 +430,13 @@ class ConversationModule:
             if keyword:
                 # Search in both title field and metadata title field
                 title_search = Conversation.c.title.ilike(f'%{keyword}%')
-                metadata_title_search = Conversation.c.metadata.op('->>')(
-                    'title'
-                ).ilike(f'%{keyword}%')
+                # metadata_title_search = Conversation.c.metadata.op('->>')(
+                #     'title'
+                # ).ilike(f'%{keyword}%')
                 base_filter = and_(
-                    base_filter, or_(title_search, metadata_title_search)
+                    # base_filter, or_(title_search, metadata_title_search)
+                    base_filter,
+                    title_search,
                 )
             if not show_section_conversations:
                 # Filter out conversations that have space_section_id in configs
