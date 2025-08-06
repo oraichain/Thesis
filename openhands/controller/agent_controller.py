@@ -1007,7 +1007,7 @@ class AgentController:
                 else:
                     # Single action - use existing flow
                     action = step_result
-                    # Set the source properly - Actions have a 'source' attribute, not '_source'
+                    action._source = EventSource.AGENT  # type: ignore [attr-defined]
 
                 if shared_config.enable_evaluation and isinstance(
                     action, AgentFinishAction
