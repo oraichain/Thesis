@@ -288,8 +288,8 @@ class EventStore(EventStoreABC):
         Raises:
             ValueError: If limit is less than 1 or greater than 100
         """
-        if limit < 1 or limit > 100:
-            raise ValueError('Limit must be between 1 and 100')
+        # if limit < 1 or limit > 100:
+        #     raise ValueError('Limit must be between 1 and 100')
 
         if shared_config.file_store == 'database':
             # Use database-specific filtering for better performance
