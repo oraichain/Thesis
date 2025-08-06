@@ -29,6 +29,7 @@ from openhands.llm.llm import LLM
 from openhands.server.mcp_cache import mcp_tools_cache
 from openhands.server.session.agent_session import AgentSession
 from openhands.server.settings import Settings
+from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 
 # from openhands.server.mcp_cache import mcp_tools_cache
@@ -226,6 +227,15 @@ class Session:
             enable_streaming=self.config.conversation.enable_streaming,
             session_id=self.sid,
         )
+        # if self.space_section_id:
+        if self.space_id and self.space_section_id:
+            replay_actions = db_file_store.get_replay_actions(
+                self.space_id, self.space_section_id
+            )
+            if replay_actions and len(replay_actions) > 0:
+                agent.set_replay_actions(replay_actions)
+                agent.set_rerun_section(True)
+
         agent.set_mcp_tools(mcp_tools)
         agent.set_search_tools(search_tools)
         agent.set_event_stream(self.agent_session.event_stream)

@@ -133,6 +133,7 @@ class AgentController:
     parent: 'AgentController | None' = None
     delegate: 'AgentController | None' = None
     _pending_action: Action | None = None
+    _concurrent_pending_actions: set[int] = set()  # Track concurrent action IDs
     _closed: bool = False
     filter_out: ClassVar[tuple[type[Event], ...]] = (
         NullAction,
@@ -233,6 +234,9 @@ class AgentController:
         self.raw_followup_conversation_id = raw_followup_conversation_id
         self.followup_conversation_events = []
         self.space_section_id = space_section_id
+        self._concurrent_pending_actions = (
+            set()
+        )  # Initialize concurrent actions tracking
         print(f'raw_followup_conversation_id: {self.raw_followup_conversation_id}')
 
     async def close(self, set_stop_state=True) -> None:
@@ -391,6 +395,8 @@ class AgentController:
         # it might be the delegate's day in the sun
         if self.delegate is not None:
             return False
+        if len(self._concurrent_pending_actions) > 0:
+            return False
 
         if isinstance(event, Action):
             if isinstance(event, MessageAction) and event.source == EventSource.USER:
@@ -478,6 +484,7 @@ class AgentController:
             await self._handle_observation(event)
 
         if self.should_step(event):
+            print('should_step:', event.id)
             self.step()
 
         # Retrieve conversation and embedding mem0
@@ -525,11 +532,6 @@ class AgentController:
             await self.set_agent_state_to(AgentState.REJECTED)
 
     async def _handle_observation(self, observation: Observation) -> None:
-        """Handles observation from the event stream.
-
-        Args:
-            observation (observation): The observation to handle.
-        """
         observation_to_print = copy.deepcopy(observation)
         if len(observation_to_print.content) > self.agent.llm.config.max_message_chars:
             observation_to_print.content = truncate_content(
@@ -545,7 +547,11 @@ class AgentController:
             self.agent.llm.metrics.merge(observation.llm_metrics)
 
         # this happens for runnable actions and microagent actions
-        if self._pending_action and self._pending_action.id == observation.cause:
+        if (
+            self._pending_action
+            and self._pending_action.id == observation.cause
+            and len(self._concurrent_pending_actions) == 0
+        ):
             if self.state.agent_state == AgentState.AWAITING_USER_CONFIRMATION:
                 return
             self._pending_action = None
@@ -553,6 +559,15 @@ class AgentController:
                 await self.set_agent_state_to(AgentState.RUNNING)
             if self.state.agent_state == AgentState.USER_REJECTED:
                 await self.set_agent_state_to(AgentState.AWAITING_USER_INPUT)
+            return
+
+        # Handle concurrent actions completion tracking
+        if observation.cause and observation.cause in self._concurrent_pending_actions:
+            self._concurrent_pending_actions.remove(observation.cause)
+
+            # Check if all concurrent actions are complete
+            if len(self._concurrent_pending_actions) == 0:
+                self._pending_action = None
             return
         elif isinstance(observation, ErrorObservation):
             if self.state.agent_state == AgentState.ERROR:
@@ -833,6 +848,7 @@ class AgentController:
 
         # reset the pending action, this will be called when the agent is STOPPED or ERROR
         self._pending_action = None
+        self._concurrent_pending_actions.clear()  # Clear concurrent actions tracking
         self.agent.reset()
 
     async def set_agent_state_to(self, new_state: AgentState) -> None:
@@ -911,6 +927,10 @@ class AgentController:
         # Extract and save final JSON result when agent finishes or awaits user input
         if new_state in (AgentState.FINISHED, AgentState.AWAITING_USER_INPUT):
             await self._extract_and_save_final_result(self.id)
+
+            # Save agent actions to space_section_actions if space_section_id is available
+            if self.space_section_id and self.space_id:
+                await self._save_agent_actions_to_space_section()
 
     def get_agent_state(self) -> AgentState:
         """Returns the current state of the agent.
@@ -1033,6 +1053,7 @@ class AgentController:
         if self.get_agent_state() != AgentState.RUNNING:
             return
 
+        print('self.pending_action:', self._pending_action)
         if self._pending_action:
             return
 
@@ -1076,8 +1097,18 @@ class AgentController:
                 step_result = self.agent.step(self.state)
                 if step_result is None:
                     raise LLMNoActionError(NO_ACTION_WAS_RETURN)
-                action = step_result
-                action._source = EventSource.AGENT  # type: ignore [attr-defined]
+
+                # Handle both single action and multiple actions
+                if isinstance(step_result, list):
+                    # Multiple actions - execute concurrently
+                    await self._execute_multiple_actions_concurrently(step_result)
+                    await self.update_state_after_step()
+                    return
+                else:
+                    # Single action - use existing flow
+                    action = step_result
+                    # Set the source properly - Actions have a 'source' attribute, not '_source'
+
                 if shared_config.enable_evaluation and isinstance(
                     action, AgentFinishAction
                 ):
@@ -1527,6 +1558,103 @@ class AgentController:
 
         except Exception as e:
             self.log('error', f'Error getting database connection: {str(e)}')
+
+    async def _save_agent_actions_to_space_section(self) -> None:
+        """Save agent actions to space_section_actions table for space_section_id tracking."""
+        try:
+            if not self.space_section_id or not self.space_id:
+                self.log(
+                    'debug',
+                    'No space_section_id or space_id available, skipping action save',
+                )
+                return
+
+            # Get all events from the conversation
+            events = list(
+                self.event_stream.get_events_by_action(
+                    actions=[
+                        'call_tool_mcp',
+                        'edit',
+                        'read',
+                        'finish',
+                        'run',
+                        'ipython',
+                    ],
+                    limit=2000,
+                    reverse=True,
+                )
+            )
+
+            agent_actions = []
+            for event in events:
+                if isinstance(event, Action) and event.source == EventSource.AGENT:
+                    try:
+                        from openhands.events.serialization.event import event_to_dict
+
+                        action_dict = event_to_dict(event)
+                        agent_actions.append(
+                            {'event_id': event.id, 'metadata': action_dict}
+                        )
+                    except Exception as e:
+                        self.log(
+                            'warning', f'Failed to serialize action {event.id}: {e}'
+                        )
+                        continue
+
+            if not agent_actions:
+                self.log('debug', 'No agent actions found to save')
+                return
+
+            # Save to database
+            conn = None
+            try:
+                conn = _db_pool_instance.get_connection()
+                if not conn:
+                    self.log('error', 'Failed to get database connection from pool')
+                    return
+
+                cursor = conn.cursor()
+
+                # Bulk insert all agent actions
+                if agent_actions:
+                    # Prepare bulk insert data
+                    bulk_data = []
+                    for action_data in agent_actions:
+                        bulk_data.append(
+                            (
+                                self.space_section_id,
+                                self.space_id,
+                                action_data['event_id'],
+                                json.dumps(action_data['metadata']),
+                            )
+                        )
+
+                    # Execute bulk insert
+                    cursor.executemany(
+                        """
+                        INSERT INTO space_section_actions
+                        (space_section_id, space_id, event_id, metadata, created_at)
+                        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        """,
+                        bulk_data,
+                    )
+                conn.commit()
+
+            except Exception as e:
+                self.log(
+                    'error',
+                    f'Error saving agent actions to space_section_actions: {str(e)}',
+                )
+                if conn:
+                    conn.rollback()
+            finally:
+                if conn:
+                    _db_pool_instance.release_connection(conn)
+
+        except Exception as e:
+            self.log(
+                'error', f'Error in _save_agent_actions_to_space_section: {str(e)}'
+            )
 
     async def force_finish(self, finish_reason: str) -> None:
         """
@@ -2036,3 +2164,69 @@ class AgentController:
             None,
         )
         return self._cached_first_user_message
+
+    async def _execute_multiple_actions_concurrently(
+        self, actions: list[Action]
+    ) -> None:
+        """Execute multiple actions - add them all to event stream for concurrent processing.
+
+        The event stream and runtime will handle concurrent execution automatically.
+        Event order will be: action1, obs1, action2, obs2, action3, obs3
+
+        Args:
+            actions: List of actions to execute
+        """
+        self.log(
+            'info',
+            f'Starting concurrent execution of {len(actions)} actions',
+            extra={'msg_type': 'CONCURRENT_EXECUTION_START'},
+        )
+
+        # Clear previous concurrent actions tracking
+        self._concurrent_pending_actions.clear()
+
+        # Process all actions just like the normal single action flow
+        for i, action in enumerate(actions):
+            # Set the source properly - Actions have a 'source' attribute, not '_source
+
+            if action.runnable:
+                if self.state.confirmation_mode and (
+                    type(action) is CmdRunAction or type(action) is IPythonRunCellAction
+                ):
+                    action.confirmation_state = (
+                        ActionConfirmationStatus.AWAITING_CONFIRMATION
+                    )
+
+                # Track ALL runnable actions for concurrent execution
+
+                # Set the first action as the main pending action for compatibility
+                if self._pending_action is None:
+                    self._pending_action = action
+
+            if not isinstance(action, NullAction):
+                if (
+                    hasattr(action, 'confirmation_state')
+                    and action.confirmation_state
+                    == ActionConfirmationStatus.AWAITING_CONFIRMATION
+                ):
+                    await self.set_agent_state_to(AgentState.AWAITING_USER_CONFIRMATION)
+
+                # Create and log metrics for frontend display
+                self._prepare_metrics_for_frontend(action)
+
+                # Log each action being added
+                self.log(
+                    'info',
+                    f'Adding concurrent action {i + 1}/{len(actions)}: {type(action).__name__} (ID: {action.id})',
+                    extra={'msg_type': 'CONCURRENT_ACTION_ADD'},
+                )
+
+                event = self.event_stream.add_event(action, EventSource.AGENT)
+                self._concurrent_pending_actions.add(event.id)
+
+        self.log(
+            'info',
+            f'All {len(actions)} concurrent actions added to event stream. '
+            f'Tracking {len(self._concurrent_pending_actions)} runnable actions: {list(self._concurrent_pending_actions)}',
+            extra={'msg_type': 'CONCURRENT_EXECUTION_READY'},
+        )

@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS agent_states (
 
 CREATE INDEX IF NOT EXISTS idx_agent_states_conversation_id ON agent_states(conversation_id);
 
+CREATE TABLE IF NOT EXISTS space_section_actions (
+    id SERIAL PRIMARY KEY,
+    space_section_id INT NOT NULL,
+    space_id INT NOT NULL,
+    event_id INT,
+    metadata JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_space_section_actions_id
+ON space_section_actions(space_id, space_section_id);
+
+
 -- Check if configs column exists, if not add it
 DO $$
 BEGIN

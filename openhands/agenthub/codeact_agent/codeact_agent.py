@@ -3,7 +3,7 @@ import os
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, Optional, override
+from typing import Any, Optional, Union, override
 
 from httpx import request
 
@@ -190,6 +190,8 @@ class CodeActAgent(Agent):
                 if tool['function']['name'] not in existing_names
             ]
             selected_tools.extend(unique_mcp_tools)
+        # Filter out ThinkAction from selected_tools for RERUN_SECTION mode
+
         else:
             # For other modes, combine tools and search_tools with deduplication
             selected_tools = deepcopy(self.tools)
@@ -532,7 +534,7 @@ class CodeActAgent(Agent):
                 )
                 self.event_stream.add_event(action, EventSource.AGENT)
 
-    def step(self, state: State) -> Optional[Action]:
+    def step(self, state: State) -> Union[Optional['Action'], list['Action']]:
         """Performs one step using the CodeAct Agent.
 
         This includes gathering info on previous steps and prompting the model to make a command to execute.
@@ -550,6 +552,14 @@ class CodeActAgent(Agent):
         if self.session_id is None:
             self.session_id = state.session_id
         # Continue with pending actions if any
+        # if self.pending_actions:
+        #     return self.pending_actions.popleft()
+
+        if self.replay_actions:
+            actions = list(self.replay_actions)
+            self.replay_actions.clear()
+            return actions
+
         if self.pending_actions:
             return self.pending_actions.popleft()
 
@@ -600,7 +610,17 @@ class CodeActAgent(Agent):
         }
         params['extra_body'] = {'metadata': state.to_llm_metadata(agent_name=self.name)}
         # if chat mode, we need to use the search tools
-        params['tools'] = self._select_tools_based_on_mode(research_mode)
+        # params['tools'] = self._select_tools_based_on_mode(research_mode)
+        if self.rerun_section:
+            selected_tools = deepcopy(self.tools)
+            # Remove ThinkAction tool if present
+            params['tools'] = [
+                tool
+                for tool in selected_tools
+                if getattr(tool.get('function', {}), 'name', None) != 'think'
+            ]
+        else:
+            params['tools'] = self._select_tools_based_on_mode(research_mode)
         params['tools'] = check_tools(params['tools'], self.llm.config)
         if self.enable_streaming:
             params['stream_options'] = {'include_usage': True}
@@ -733,26 +753,31 @@ class CodeActAgent(Agent):
         # Use ConversationMemory to process initial messages
         # switch mode and initial messages
 
-        messages = self.conversation_memory.process_initial_messages(
-            with_caching=self.llm.is_caching_prompt_active(),
-            agent_infos=agent_infos,
-        )
+        if self.rerun_section:
+            messages = self.conversation_memory.process_initial_rerun_section_message(
+                with_caching=self.llm.is_caching_prompt_active(),
+            )
+        else:
+            messages = self.conversation_memory.process_initial_messages(
+                with_caching=self.llm.is_caching_prompt_active(),
+                agent_infos=agent_infos,
+            )
 
-        if research_mode == ResearchMode.FOLLOW_UP:
-            messages = self.conversation_memory.process_initial_followup_message(
-                with_caching=self.llm.is_caching_prompt_active(),
-            )
-        elif research_mode is None or research_mode == ResearchMode.CHAT:
-            messages = self.conversation_memory.process_initial_chatmode_message(
-                with_caching=self.llm.is_caching_prompt_active(),
-                search_tools=[
-                    {
-                        'name': tool['function']['name'],
-                        'description': tool['function']['description'],
-                    }
-                    for tool in self.search_tools
-                ],
-            )
+            if research_mode == ResearchMode.FOLLOW_UP:
+                messages = self.conversation_memory.process_initial_followup_message(
+                    with_caching=self.llm.is_caching_prompt_active(),
+                )
+            elif research_mode is None or research_mode == ResearchMode.CHAT:
+                messages = self.conversation_memory.process_initial_chatmode_message(
+                    with_caching=self.llm.is_caching_prompt_active(),
+                    search_tools=[
+                        {
+                            'name': tool['function']['name'],
+                            'description': tool['function']['description'],
+                        }
+                        for tool in self.search_tools
+                    ],
+                )
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
             messages[0].content.append(TextContent(text=knowledge_base))
