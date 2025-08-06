@@ -595,7 +595,20 @@ class AgentController:
                     self.user_id,
                     self.space_section_id,
                 )
-                if knowledge_base and len(knowledge_base) > 0:
+                if (
+                    knowledge_base
+                    and (
+                        (
+                            hasattr(knowledge_base, 'knowledge_base_results')
+                            and len(knowledge_base.knowledge_base_results) > 0
+                        )
+                        or (
+                            hasattr(knowledge_base, 'x_results')
+                            and len(knowledge_base.x_results) > 0
+                        )
+                    )
+                    > 0
+                ):
                     new_items = self.agent.update_agent_knowledge_base(knowledge_base)
                 else:
                     events = await self._get_followup_conversation_events()
@@ -606,6 +619,8 @@ class AgentController:
                                 'x_results': [],
                             }
                         )
+            logger.info(f'new_items: {new_items}')
+
         return new_items
 
     async def _handle_message_action(self, action: MessageAction) -> None:
