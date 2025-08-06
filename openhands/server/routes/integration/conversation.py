@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema.action import ActionType
@@ -30,9 +31,24 @@ from openhands.storage.data_models.conversation_status import ConversationStatus
 conversation_router = APIRouter(prefix='/conversations')
 
 
-@conversation_router.post('/')
-async def integration_new_conversation(request: Request, data: InitSessionRequest):
-    return await new_conversation(request, data)
+class CreatNewConversationIntegrationRequest(BaseModel):
+    initial_user_msg: str | None = None
+    research_mode: str | None = None
+    space_id: int | None = None
+    space_section_id: int | None = None
+    thread_follow_up: int | None = None
+    followup_discover_id: str | None = None
+    mcp_disable: dict[str, bool] | None = None
+    system_prompt: str | None = None
+    image_urls: list[str] | None = None
+
+
+@conversation_router.post('')
+async def integration_new_conversation(
+    request: Request, data: CreatNewConversationIntegrationRequest
+):
+    new_conversation_data = InitSessionRequest(**data.model_dump())
+    return await new_conversation(request, new_conversation_data)
 
 
 @conversation_router.get('/{conversation_id}')

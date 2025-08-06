@@ -74,20 +74,14 @@ class TestIntegrationConversationAPI:
                 content={'status': 'ok', 'conversation_id': 'test-conversation-id'}
             )
 
-            # Create a proper Repository object
-            from openhands.integrations.service_types import ProviderType, Repository
-
-            repository = Repository(
-                id=12345,
-                full_name='test/repo',
-                git_provider=ProviderType.GITHUB,
-                stargazers_count=100,
-            )
-
+            # Use the new integration request format
             payload = {
                 'initial_user_msg': 'Hello, I need help with coding',
-                'selected_repository': repository.model_dump(mode='json'),
-                'selected_branch': 'main',
+                'research_mode': 'normal',
+                'space_id': 123,
+                'thread_follow_up': None,
+                'followup_discover_id': None,
+                'space_section_id': 456,
             }
 
             # Mock authentication middleware
@@ -120,8 +114,7 @@ class TestIntegrationConversationAPI:
 
                 assert isinstance(data, InitSessionRequest)
                 assert data.initial_user_msg == 'Hello, I need help with coding'
-                assert data.selected_repository.full_name == 'test/repo'
-                assert data.selected_branch == 'main'
+                # Note: The integration endpoint now accepts different fields and converts to InitSessionRequest
 
     @pytest.mark.asyncio
     async def test_create_conversation_error(self, test_client):
@@ -133,7 +126,7 @@ class TestIntegrationConversationAPI:
                 status_code=400, detail='Missing required settings'
             )
 
-            payload = {'initial_user_msg': 'Hello'}
+            payload = {'initial_user_msg': 'Hello', 'research_mode': 'normal'}
 
             response = test_client.post(
                 '/api/v1/integration/conversations/',

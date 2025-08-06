@@ -17,6 +17,7 @@ from openhands.server.auth import get_user_id
 from openhands.server.modules.conversation import conversation_module
 from openhands.server.thesis_auth import (
     ThesisUser,
+    get_user_detail_by_api_key,
     get_user_detail_from_thesis_auth_server,
 )
 from openhands.server.types import SessionMiddlewareInterface
@@ -24,6 +25,10 @@ from openhands.server.utils.ratelimit_storage import (
     InMemoryRateLimiterStorage,
     RateLimiterStorage,
 )
+
+
+def is_integration_api(request: Request) -> bool:
+    return request.url.path.startswith('/api/v1/integration')
 
 
 class LocalhostCORSMiddleware(CORSMiddleware):
@@ -204,15 +209,10 @@ class IntegrationRateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, rate_limiter: UserBasedRateLimiter):
         super().__init__(app)
         self.rate_limiter = rate_limiter
-        self.public_paths = [
-            '/api/v1/integration/auth/token',
-        ]
 
     async def dispatch(self, request: Request, call_next):
         # Only apply rate limiting to integration API routes
-        if not request.url.path.startswith('/api/v1/integration'):
-            return await call_next(request)
-        if request.url.path in self.public_paths:
+        if not is_integration_api(request):
             return await call_next(request)
 
         # Get user ID from request state (set by JWT middleware)
@@ -366,7 +366,6 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/api/usecases',
             '/docs',
             '/openapi.json',
-            '/api/v1/integration/auth/token',
         ]
 
         self.public_path_patterns = [
@@ -441,7 +440,6 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/usecases',
             '/docs',
             '/openapi.json',
-            '/api/v1/integration/auth/token',
         ]
 
         self.public_path_patterns = [
@@ -453,6 +451,9 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path in self.public_paths:
+            return await call_next(request)
+
+        if is_integration_api(request):
             return await call_next(request)
 
         for pattern in self.public_path_patterns:
@@ -515,4 +516,51 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={'detail': 'Internal server error'},
+            )
+
+
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: ASGIApp):
+        super().__init__(app)
+
+    async def dispatch(self, request: Request, call_next):
+        if not is_integration_api(request):
+            return await call_next(request)
+
+        auth_header = request.headers.get('Authorization')
+        api_key = auth_header.split(' ')[-1]
+        if not auth_header or not auth_header.startswith('Bearer ') or not api_key:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={'detail': 'Missing or invalid authorization header'},
+            )
+
+        try:
+            user, access_token = await get_user_detail_by_api_key(api_key)
+            if not user:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={'detail': 'Invalid API key'},
+                )
+            user_id = user.publicAddress
+            # Only set user in request.state if all checks pass
+            request.state.user_id = user_id
+            request.state.user = user
+            request.state.access_token = access_token
+
+            # replace header Authorization with Bearer token
+            new_headers = []
+            for header, value in request.scope['headers']:
+                if header.lower() != b'authorization':
+                    new_headers.append((header, value))
+                    continue
+                new_headers.append((header, f'Bearer {access_token}'.encode()))
+            request.scope['headers'] = new_headers
+            request.headers._list = new_headers
+
+            return await call_next(request)
+        except HTTPException as e:
+            return JSONResponse(
+                status_code=e.status_code,
+                content={'detail': e.detail},
             )

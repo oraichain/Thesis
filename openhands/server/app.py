@@ -85,15 +85,15 @@ def custom_openapi():
     )
 
     openapi_schema['components']['securitySchemes'] = {
-        'BearerAuth': {
+        'APIKeyAuth': {
             'type': 'http',
             'scheme': 'bearer',
             'bearerFormat': 'JWT',
-            'description': 'Enter your Bearer token in the format: Bearer <your_token_here>',
+            'description': 'Enter your API token in the format: Bearer <your_token_here>',
         }
     }
 
-    openapi_schema['security'] = [{'BearerAuth': []}, {}]
+    openapi_schema['security'] = [{'APIKeyAuth': []}, {}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema

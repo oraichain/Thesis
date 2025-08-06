@@ -23,6 +23,7 @@ from openhands.server.middleware import (  # noqa
     ProviderTokenMiddleware,
     RateLimitMiddleware,
     UserBasedRateLimiter,
+    APIKeyAuthMiddleware,
 )
 from openhands.server.utils.ratelimit_storage import create_rate_limiter_storage  # noqa
 
@@ -65,6 +66,7 @@ base_app.add_middleware(
     IntegrationRateLimitMiddleware, rate_limiter=integration_rate_limiter
 )
 
+base_app.add_middleware(APIKeyAuthMiddleware)
 base_app.add_middleware(JWTAuthMiddleware)
 
 
