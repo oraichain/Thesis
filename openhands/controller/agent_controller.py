@@ -560,7 +560,6 @@ class AgentController:
         final_result = await self._extract_and_save_final_result(
             self.raw_followup_conversation_id, save_result=False
         )
-        print('final_result_followup_conversation', final_result)
         if final_result and len(final_result) > 0:
             return [
                 {
