@@ -560,12 +560,12 @@ class AgentController:
         final_result = await self._extract_and_save_final_result(
             self.raw_followup_conversation_id, save_result=False
         )
-        print('final_result_followup_conversation', final_result)
         if final_result and len(final_result) > 0:
             return [
                 {
                     'content': final_result,
                     'chunkId': str(uuid.uuid4()),
+                    'documentId': self.raw_followup_conversation_id,
                 }
             ]
         return []
@@ -620,8 +620,6 @@ class AgentController:
                                 'x_results': [],
                             }
                         )
-            logger.info(f'new_items: {new_items}')
-
         return new_items
 
     async def _handle_message_action(self, action: MessageAction) -> None:
