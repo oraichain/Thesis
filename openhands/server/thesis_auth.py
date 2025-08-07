@@ -330,7 +330,7 @@ async def search_knowledge(
     thread_follow_up: int | None = None,
     user_id: str | None = None,
     space_section_id: int | None = None,
-) -> list[dict] | None:
+) -> dict | None:
     url = '/api/knowledge/search'
     payload = {'question': question}
     if space_id is not None:
@@ -360,7 +360,7 @@ async def search_knowledge(
             )
             return None
         data = response.json()['data']
-        print(f'Data search knowledge: {data}')
+        logger.debug(f'Data search knowledge: {data}')
         if data:
             return data
         else:
