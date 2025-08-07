@@ -1485,8 +1485,9 @@ class AgentController:
             events = list(
                 self.event_stream.get_events_by_action(
                     actions=actions_to_save,
-                    limit=2000,
+                    limit=200,
                     reverse=True,
+                    sid=self.event_stream.sid,
                 )
             )
 
