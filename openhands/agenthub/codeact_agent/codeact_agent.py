@@ -190,7 +190,6 @@ class CodeActAgent(Agent):
                 if tool['function']['name'] not in existing_names
             ]
             selected_tools.extend(unique_mcp_tools)
-        # Filter out ThinkAction from selected_tools for RERUN_SECTION mode
 
         else:
             # For other modes, combine tools and search_tools with deduplication
@@ -204,6 +203,19 @@ class CodeActAgent(Agent):
             selected_tools.extend(unique_search_tools)
 
         logger.debug(f'Selected tools: {selected_tools}')
+
+        if self.rerun_section:
+            selected_tools = deepcopy(self.tools)
+
+            if hasattr(self, 'mcp_tools') and self.mcp_tools:
+                existing_names = {tool['function']['name'] for tool in selected_tools}
+                pyodide_mcp_tools = [
+                    tool
+                    for tool in self.mcp_tools
+                    if tool['function']['name'].startswith('pyodide_')
+                    and tool['function']['name'] not in existing_names
+                ]
+                selected_tools.extend(pyodide_mcp_tools)
 
         # NOTE:only for anthropic model, we need to set the cache_control for the tool list
         if 'claude' in self.llm.config.model and len(selected_tools) > 0:
@@ -610,22 +622,14 @@ class CodeActAgent(Agent):
         }
         params['extra_body'] = {'metadata': state.to_llm_metadata(agent_name=self.name)}
         # if chat mode, we need to use the search tools
-        # params['tools'] = self._select_tools_based_on_mode(research_mode)
-        if self.rerun_section:
-            selected_tools = deepcopy(self.tools)
-            # Remove ThinkAction tool if present
-            params['tools'] = [
-                tool
-                for tool in selected_tools
-                if getattr(tool.get('function', {}), 'name', None) != 'think'
-            ]
-        else:
-            params['tools'] = self._select_tools_based_on_mode(research_mode)
+
+        params['tools'] = self._select_tools_based_on_mode(research_mode)
         params['tools'] = check_tools(params['tools'], self.llm.config)
         if self.enable_streaming:
             params['stream_options'] = {'include_usage': True}
         logger.info(f'Messages: {messages}')
         last_message = messages[-1]
+
         response = None
         if (
             last_message.role == 'user'
@@ -683,7 +687,8 @@ class CodeActAgent(Agent):
                 if not self.streaming_llm
                 else self.streaming_llm.async_streaming_completion(**params)
             )
-            # Process streaming response and populate pending_actions
+        print('response_LLM: ', response)
+        # Process streaming response and populate pending_actions
         if self.enable_streaming:
             call_async_from_sync(
                 self._handle_streaming_response,
@@ -753,31 +758,26 @@ class CodeActAgent(Agent):
         # Use ConversationMemory to process initial messages
         # switch mode and initial messages
 
-        if self.rerun_section:
-            messages = self.conversation_memory.process_initial_rerun_section_message(
-                with_caching=self.llm.is_caching_prompt_active(),
-            )
-        else:
-            messages = self.conversation_memory.process_initial_messages(
-                with_caching=self.llm.is_caching_prompt_active(),
-                agent_infos=agent_infos,
-            )
+        messages = self.conversation_memory.process_initial_messages(
+            with_caching=self.llm.is_caching_prompt_active(),
+            agent_infos=agent_infos,
+        )
 
-            if research_mode == ResearchMode.FOLLOW_UP:
-                messages = self.conversation_memory.process_initial_followup_message(
-                    with_caching=self.llm.is_caching_prompt_active(),
-                )
-            elif research_mode is None or research_mode == ResearchMode.CHAT:
-                messages = self.conversation_memory.process_initial_chatmode_message(
-                    with_caching=self.llm.is_caching_prompt_active(),
-                    search_tools=[
-                        {
-                            'name': tool['function']['name'],
-                            'description': tool['function']['description'],
-                        }
-                        for tool in self.search_tools
-                    ],
-                )
+        if research_mode == ResearchMode.FOLLOW_UP:
+            messages = self.conversation_memory.process_initial_followup_message(
+                with_caching=self.llm.is_caching_prompt_active(),
+            )
+        elif research_mode is None or research_mode == ResearchMode.CHAT:
+            messages = self.conversation_memory.process_initial_chatmode_message(
+                with_caching=self.llm.is_caching_prompt_active(),
+                search_tools=[
+                    {
+                        'name': tool['function']['name'],
+                        'description': tool['function']['description'],
+                    }
+                    for tool in self.search_tools
+                ],
+            )
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
             messages[0].content.append(TextContent(text=knowledge_base))
