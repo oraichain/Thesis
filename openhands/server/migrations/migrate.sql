@@ -75,6 +75,18 @@ CREATE TABLE IF NOT EXISTS space_section_actions (
 CREATE INDEX IF NOT EXISTS idx_space_section_actions_id
 ON space_section_actions(space_id, space_section_id);
 
+CREATE TABLE IF NOT EXISTS space_section_configs (
+    id SERIAL PRIMARY KEY,
+    space_id INT NOT NULL,
+    space_section_id INT NOT NULL,
+    hash_config TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- Create unique constraint for ON CONFLICT support
+CREATE UNIQUE INDEX IF NOT EXISTS idx_space_section_config_unique
+ON space_section_configs(space_id, space_section_id);
+
 
 -- Check if configs column exists, if not add it
 DO $$
