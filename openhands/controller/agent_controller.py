@@ -570,7 +570,7 @@ class AgentController:
             ]
         return []
 
-    async def _search_knowledge(self, query: str):
+    async def _search_knowledge(self, query: str) -> dict | None:
         new_items = None
         if self.user_id and (self.space_id or self.thread_follow_up):
             knowledge_base = await search_knowledge_mem0(
@@ -582,31 +582,28 @@ class AgentController:
             if knowledge_base and len(knowledge_base) > 0:
                 new_items = self.agent.update_agent_knowledge_base(
                     {
-                        {
-                            'knowledge_base_results': knowledge_base,
-                            'x_results': [],
-                        }
+                        'knowledge_base_results': knowledge_base,
+                        'x_results': [],
                     }
                 )
             else:
-                knowledge_base = await search_knowledge(
+                knowledge_base_dict = await search_knowledge(
                     query,
                     self.space_id,
                     self.thread_follow_up,
                     self.user_id,
                     self.space_section_id,
                 )
-                if knowledge_base and (
-                    (
-                        hasattr(knowledge_base, 'knowledge_base_results')
-                        and len(knowledge_base.knowledge_base_results) > 0
-                    )
-                    or (
-                        hasattr(knowledge_base, 'x_results')
-                        and len(knowledge_base.x_results) > 0
-                    )
+                logger.debug(
+                    f'new_items_knowledge_base_from_thesis: {knowledge_base_dict}'
+                )
+                if knowledge_base_dict and (
+                    len(knowledge_base_dict.get('knowledge_base_results', [])) > 0
+                    or len(knowledge_base_dict.get('x_results', [])) > 0
                 ):
-                    new_items = self.agent.update_agent_knowledge_base(knowledge_base)
+                    new_items = self.agent.update_agent_knowledge_base(
+                        knowledge_base_dict
+                    )
                 else:
                     events = await self._get_followup_conversation_events()
                     if events and len(events) > 0:
@@ -686,8 +683,8 @@ class AgentController:
             # update new knowledge base with the user message
             new_items = await self._search_knowledge(action.content)
             if new_items and (
-                len(new_items['knowledge_base_results']) > 0
-                or len(new_items['x_results']) > 0
+                len(new_items.get('knowledge_base_results', {})) > 0
+                or len(new_items.get('x_results', {})) > 0
             ):
                 knowledge_base_content = process_knowledge_base(new_items)
                 knowledge_base_action = KnowledgeBaseAction(
