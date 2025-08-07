@@ -274,7 +274,7 @@ class EventStore(EventStoreABC):
         observations: list[str] | None = None,
         limit: int = 100,
         reverse: bool = True,
-        sid: str | None = None,
+        sid: str = '',
     ) -> list[Event]:
         """Get events filtered by specific actions with limit and sorting by created_at.
 
