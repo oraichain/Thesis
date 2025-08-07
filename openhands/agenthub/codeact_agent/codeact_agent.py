@@ -142,8 +142,10 @@ class CodeActAgent(Agent):
     @override
     def set_system_prompt(self, system_prompt: str) -> None:
         self.system_prompt = system_prompt
+
         if self.prompt_manager:
             self.prompt_manager.set_system_message(system_prompt)
+            self.conversation_memory.prompt_manager.set_system_message(system_prompt)
         logger.info(
             f'New system prompt: {self.conversation_memory.process_initial_messages()}'
         )
@@ -690,12 +692,11 @@ class CodeActAgent(Agent):
                 if not self.streaming_llm
                 else self.streaming_llm.async_streaming_completion(**params)
             )
-        print('response_LLM: ', response)
         # Process streaming response and populate pending_actions
         if self.enable_streaming:
             call_async_from_sync(
                 self._handle_streaming_response,
-                15,
+                180,
                 response,
                 params['tools'],
                 research_mode,
