@@ -1,5 +1,6 @@
 import asyncio
 import time
+import os
 from copy import deepcopy
 from logging import LoggerAdapter
 
@@ -227,6 +228,18 @@ class Session:
             enable_streaming=self.config.conversation.enable_streaming,
             session_id=self.sid,
         )
+        
+        runtime_max_workers = 1
+        if self.space_id and self.space_section_id:
+            replay_actions = db_file_store.get_replay_actions(
+                self.space_id, self.space_section_id
+            )
+            if replay_actions and len(replay_actions) > 0:
+                agent.set_replay_actions(replay_actions)
+                agent.set_rerun_section(True)
+                runtime_max_workers = min(int(
+                    os.getenv('RUNTIME_MAX_WORKERS') or 5
+                ), len(replay_actions))
 
         agent.set_mcp_tools(mcp_tools)
         agent.set_search_tools(search_tools)
@@ -248,14 +261,7 @@ class Session:
             agent.set_space_id(self.space_id)
         if self.thread_follow_up:
             agent.set_thread_follow_up(self.thread_follow_up)
-        # if self.space_section_id:
-        if self.space_id and self.space_section_id:
-            replay_actions = db_file_store.get_replay_actions(
-                self.space_id, self.space_section_id
-            )
-            if replay_actions and len(replay_actions) > 0:
-                agent.set_replay_actions(replay_actions)
-                agent.set_rerun_section(True)
+
         git_provider_tokens = None
         selected_repository = None
         selected_branch = None
@@ -281,6 +287,7 @@ class Session:
                 replay_json=replay_json,
                 mnemonic=mnemonic,
                 research_mode=research_mode,
+                runtime_max_workers=runtime_max_workers,
             )
             end_time = time.time()
             total_time = end_time - start_time
