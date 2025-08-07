@@ -989,7 +989,7 @@ class AgentController:
                 ):
                     print('AgentFinishAction', action)
                     finish_message = action.final_thought
-                    await self.set_agent_state_to(AgentState.RUNNING)
+                    await self.set_agent_state_to(AgentState.FINISHED)
                     self.log(
                         'info',
                         'Intercepted AgentFinishAction before pushing to event stream',
