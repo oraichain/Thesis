@@ -829,7 +829,7 @@ class AgentController:
             await self._extract_and_save_final_result(self.id)
 
             # Save agent actions to space_section_actions if space_section_id is available
-            if self.space_section_id and self.space_id:
+            if self.space_section_id and self.space_id and not self.agent.rerun_section:
                 await self._save_agent_actions_to_space_section()
 
     def get_agent_state(self) -> AgentState:
@@ -1474,16 +1474,17 @@ class AgentController:
                 return
 
             # Get all events from the conversation
+            actions_to_save = [
+                'call_tool_mcp',
+                # 'edit',
+                # 'read',
+                # 'finish',
+                # 'run',
+                # 'ipython',
+            ]
             events = list(
                 self.event_stream.get_events_by_action(
-                    actions=[
-                        'call_tool_mcp',
-                        'edit',
-                        'read',
-                        'finish',
-                        'run',
-                        'ipython',
-                    ],
+                    actions=actions_to_save,
                     limit=2000,
                     reverse=True,
                 )
@@ -1496,6 +1497,12 @@ class AgentController:
                         from openhands.events.serialization.event import event_to_dict
 
                         action_dict = event_to_dict(event)
+                        if (
+                            action_dict.get('tool_call_metadata', {})
+                            .get('function_name', '')
+                            .startswith('pyodide_')
+                        ):
+                            continue
                         agent_actions.append(
                             {'event_id': event.id, 'metadata': action_dict}
                         )
