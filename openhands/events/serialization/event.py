@@ -287,7 +287,7 @@ def _extract_from_edit_event(event_dict: dict) -> str | None:
 def _extract_from_finish_event(event_dict: dict) -> str | None:
     """Extract content from finish action tool calls."""
 
-    final_thought = event_dict.get('final_thought', '')
+    final_thought = event_dict.get('args', {}).get('final_thought', '')
     if final_thought:
         try:
             json_result = _try_extract_json(final_thought)
