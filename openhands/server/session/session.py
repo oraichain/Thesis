@@ -235,6 +235,10 @@ class Session:
             if replay_actions and len(replay_actions) > 0:
                 agent.set_replay_actions(replay_actions)
                 agent.set_rerun_section(True)
+                if agent.prompt_manager:
+                    agent.set_system_prompt(
+                        agent.prompt_manager.get_rerun_section_message()
+                    )
 
         agent.set_mcp_tools(mcp_tools)
         agent.set_search_tools(search_tools)
