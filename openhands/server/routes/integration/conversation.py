@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -16,6 +18,7 @@ from openhands.server.auth import (
 )
 from openhands.server.data_models.conversation_info import ConversationDetailInfo
 from openhands.server.modules.conversation import conversation_module
+from openhands.server.modules.space import SpaceModule
 from openhands.server.routes.manage_conversations import (
     InitSessionRequest,
     get_default_conversation_title,
@@ -48,7 +51,22 @@ async def integration_new_conversation(
     request: Request, data: CreatNewConversationIntegrationRequest
 ):
     new_conversation_data = InitSessionRequest(**data.model_dump())
-    return await new_conversation(request, new_conversation_data)
+    new_conversation_result = await new_conversation(request, new_conversation_data)
+
+    try:
+        new_conversation_json = json.loads(new_conversation_result.body)
+        conversation_id = new_conversation_json.get('conversation_id')
+    except Exception:
+        conversation_id = None
+
+    if conversation_id and data.space_id and data.space_section_id:
+        space_module = SpaceModule(request.headers.get('Authorization'))
+        await space_module.update_space_section_history(
+            space_id=str(data.space_id),
+            section_id=str(data.space_section_id),
+            conversation_id=conversation_id,
+        )
+    return new_conversation_result
 
 
 @conversation_router.get('/{conversation_id}')

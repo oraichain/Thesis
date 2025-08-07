@@ -549,3 +549,259 @@ class TestIntegrationConversationAPI:
             # Should still return conversation info but without events
             assert data['conversation_id'] == conversation_id
             assert 'events' not in data or data['events'] is None
+
+    @pytest.mark.asyncio
+    async def test_create_conversation_with_space_data_success(self, test_client):
+        """Test successful conversation creation with space_id and space_section_id."""
+        conversation_id = 'test-conversation-id'
+        space_id = 123
+        space_section_id = 456
+
+        with patch(
+            'openhands.server.routes.integration.conversation.new_conversation'
+        ) as mock_new_conversation, patch(
+            'openhands.server.routes.integration.conversation.SpaceModule'
+        ) as mock_space_module_cls:
+            # Mock to return FastAPI JSONResponse with conversation_id
+            from fastapi.responses import JSONResponse
+
+            mock_new_conversation.return_value = JSONResponse(
+                content={'status': 'ok', 'conversation_id': conversation_id}
+            )
+
+            # Mock SpaceModule
+            mock_space_module = AsyncMock()
+            mock_space_module.update_space_section_history = AsyncMock()
+            mock_space_module_cls.return_value = mock_space_module
+
+            payload = {
+                'initial_user_msg': 'Hello, I need help with coding',
+                'research_mode': 'normal',
+                'space_id': space_id,
+                'space_section_id': space_section_id,
+            }
+
+            # Mock authentication middleware
+            with patch(
+                'openhands.server.middleware.JWTAuthMiddleware.dispatch'
+            ) as mock_auth:
+
+                async def mock_auth_dispatch(request, call_next):
+                    # Simulate authenticated request with Authorization header
+                    request.state.user_id = 'test-user-id'
+                    request.state.user = type(
+                        'User', (), {'mnemonic': 'test-mnemonic'}
+                    )()
+                    return await call_next(request)
+
+                mock_auth.side_effect = mock_auth_dispatch
+
+                response = test_client.post(
+                    '/api/v1/integration/conversations/',
+                    json=payload,
+                    headers={'Authorization': 'Bearer test-token'},
+                )
+
+                assert response.status_code == 200
+                response_data = response.json()
+                assert response_data['conversation_id'] == conversation_id
+
+                # Verify new_conversation was called
+                mock_new_conversation.assert_called_once()
+
+                # Verify SpaceModule was instantiated with correct authorization
+                mock_space_module_cls.assert_called_once_with('Bearer test-token')
+
+                # Verify update_space_section_history was called with correct parameters
+                mock_space_module.update_space_section_history.assert_called_once_with(
+                    space_id=str(space_id),
+                    section_id=str(space_section_id),
+                    conversation_id=conversation_id,
+                )
+
+    @pytest.mark.asyncio
+    async def test_create_conversation_without_space_data(self, test_client):
+        """Test conversation creation without space_id and space_section_id."""
+        conversation_id = 'test-conversation-id'
+
+        with patch(
+            'openhands.server.routes.integration.conversation.new_conversation'
+        ) as mock_new_conversation, patch(
+            'openhands.server.routes.integration.conversation.SpaceModule'
+        ) as mock_space_module_cls:
+            # Mock to return FastAPI JSONResponse
+            from fastapi.responses import JSONResponse
+
+            mock_new_conversation.return_value = JSONResponse(
+                content={'status': 'ok', 'conversation_id': conversation_id}
+            )
+
+            # Mock SpaceModule - should not be called
+            mock_space_module = AsyncMock()
+            mock_space_module_cls.return_value = mock_space_module
+
+            payload = {
+                'initial_user_msg': 'Hello, I need help with coding',
+                'research_mode': 'normal',
+                # No space_id or space_section_id
+            }
+
+            response = test_client.post(
+                '/api/v1/integration/conversations/',
+                json=payload,
+                headers={'Authorization': 'Bearer test-token'},
+            )
+
+            assert response.status_code == 200
+            response_data = response.json()
+            assert response_data['conversation_id'] == conversation_id
+
+            # Verify new_conversation was called
+            mock_new_conversation.assert_called_once()
+
+            # Verify SpaceModule was NOT instantiated since no space data provided
+            mock_space_module_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_conversation_with_partial_space_data(self, test_client):
+        """Test conversation creation with only space_id but no space_section_id."""
+        conversation_id = 'test-conversation-id'
+
+        with patch(
+            'openhands.server.routes.integration.conversation.new_conversation'
+        ) as mock_new_conversation, patch(
+            'openhands.server.routes.integration.conversation.SpaceModule'
+        ) as mock_space_module_cls:
+            # Mock to return FastAPI JSONResponse
+            from fastapi.responses import JSONResponse
+
+            mock_new_conversation.return_value = JSONResponse(
+                content={'status': 'ok', 'conversation_id': conversation_id}
+            )
+
+            # Mock SpaceModule - should not be called
+            mock_space_module = AsyncMock()
+            mock_space_module_cls.return_value = mock_space_module
+
+            payload = {
+                'initial_user_msg': 'Hello, I need help with coding',
+                'research_mode': 'normal',
+                'space_id': 123,
+                # Missing space_section_id
+            }
+
+            response = test_client.post(
+                '/api/v1/integration/conversations/',
+                json=payload,
+                headers={'Authorization': 'Bearer test-token'},
+            )
+
+            assert response.status_code == 200
+            response_data = response.json()
+            assert response_data['conversation_id'] == conversation_id
+
+            # Verify new_conversation was called
+            mock_new_conversation.assert_called_once()
+
+            # Verify SpaceModule was NOT called since space_section_id is missing
+            mock_space_module_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_conversation_invalid_response_format(self, test_client):
+        """Test conversation creation when new_conversation returns invalid JSON."""
+        with patch(
+            'openhands.server.routes.integration.conversation.new_conversation'
+        ) as mock_new_conversation, patch(
+            'openhands.server.routes.integration.conversation.SpaceModule'
+        ) as mock_space_module_cls:
+            # Mock to return response with invalid JSON
+
+            mock_response = MagicMock()
+            mock_response.body = b'invalid json'
+            mock_new_conversation.return_value = mock_response
+
+            # Mock SpaceModule - should not be called due to invalid response
+            mock_space_module = AsyncMock()
+            mock_space_module_cls.return_value = mock_space_module
+
+            payload = {
+                'initial_user_msg': 'Hello, I need help with coding',
+                'space_id': 123,
+                'space_section_id': 456,
+            }
+
+            response = test_client.post(
+                '/api/v1/integration/conversations/',
+                json=payload,
+                headers={'Authorization': 'Bearer test-token'},
+            )
+
+            # Should still return the response from new_conversation
+            assert response.status_code == 200
+
+            # Verify SpaceModule was NOT called due to conversation_id being None
+            mock_space_module_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_create_conversation_space_update_error_handling(self, test_client):
+        """Test that space update errors are handled gracefully by SpaceModule."""
+        conversation_id = 'test-conversation-id'
+        space_id = 123
+        space_section_id = 456
+
+        with patch(
+            'openhands.server.routes.integration.conversation.new_conversation'
+        ) as mock_new_conversation, patch(
+            'openhands.server.routes.integration.conversation.SpaceModule'
+        ) as mock_space_module_cls, patch(
+            'openhands.server.modules.space.update_space_section_history'
+        ) as mock_update_func, patch(
+            'openhands.server.modules.space.logger'
+        ) as mock_logger:
+            # Mock to return FastAPI JSONResponse
+            from fastapi.responses import JSONResponse
+
+            mock_new_conversation.return_value = JSONResponse(
+                content={'status': 'ok', 'conversation_id': conversation_id}
+            )
+
+            # Mock the underlying update function to raise an exception
+            mock_update_func.side_effect = Exception('Space update failed')
+
+            # Create a real SpaceModule instance so we test the actual error handling
+            from openhands.server.modules.space import SpaceModule
+
+            real_space_module = SpaceModule('Bearer test-token')
+            mock_space_module_cls.return_value = real_space_module
+
+            payload = {
+                'initial_user_msg': 'Hello, I need help with coding',
+                'space_id': space_id,
+                'space_section_id': space_section_id,
+            }
+
+            response = test_client.post(
+                '/api/v1/integration/conversations/',
+                json=payload,
+                headers={'Authorization': 'Bearer test-token'},
+            )
+
+            # Should still return success even if space update fails (error is handled internally)
+            assert response.status_code == 200
+            response_data = response.json()
+            assert response_data['conversation_id'] == conversation_id
+
+            # Verify both functions were called
+            mock_new_conversation.assert_called_once()
+            mock_space_module_cls.assert_called_once_with('Bearer test-token')
+
+            # Verify the underlying update function was called and error was logged
+            mock_update_func.assert_called_once_with(
+                space_id=str(space_id),
+                section_id=str(space_section_id),
+                conversation_id=conversation_id,
+                bearer_token='Bearer test-token',
+            )
+            mock_logger.error.assert_called_once_with(
+                'Error updating space section history: Space update failed'
+            )

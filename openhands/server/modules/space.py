@@ -1,7 +1,9 @@
+from openhands.core.logger import openhands_logger as logger
 from openhands.server.thesis_auth import (
     get_list_sections,
     get_list_space,
     get_space_detail,
+    update_space_section_history,
 )
 
 
@@ -43,3 +45,17 @@ class SpaceModule:
         if not list_section_response_data.get('data'):
             return []
         return list_section_response_data.get('data')
+
+    async def update_space_section_history(
+        self, space_id: str, section_id: str, conversation_id: str
+    ):
+        try:
+            await update_space_section_history(
+                space_id=space_id,
+                section_id=section_id,
+                conversation_id=conversation_id,
+                bearer_token=self.bearer_token,
+            )
+        except Exception as e:
+            logger.error(f'Error updating space section history: {str(e)}')
+        return

@@ -649,3 +649,27 @@ async def get_list_sections(
             detail=response.json().get('error', 'Unknown error'),
         )
     return response.json()
+
+
+async def update_space_section_history(
+    space_id: str,
+    section_id: str,
+    conversation_id: str,
+    bearer_token: str,
+) -> dict | None:
+    url = f'api/spaces/{space_id}/section-history'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': bearer_token,
+    }
+    payload = {
+        'conversationId': conversation_id,
+        'spaceSectionId': section_id,
+    }
+    response = await thesis_auth_client.post(url, headers=headers, json=payload)
+    if not check_success_response(response):
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=response.json().get('error', 'Unknown error'),
+        )
+    return response.json()
