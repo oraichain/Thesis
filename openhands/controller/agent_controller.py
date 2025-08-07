@@ -596,19 +596,15 @@ class AgentController:
                     self.user_id,
                     self.space_section_id,
                 )
-                if (
-                    knowledge_base
-                    and (
-                        (
-                            hasattr(knowledge_base, 'knowledge_base_results')
-                            and len(knowledge_base.knowledge_base_results) > 0
-                        )
-                        or (
-                            hasattr(knowledge_base, 'x_results')
-                            and len(knowledge_base.x_results) > 0
-                        )
+                if knowledge_base and (
+                    (
+                        hasattr(knowledge_base, 'knowledge_base_results')
+                        and len(knowledge_base.knowledge_base_results) > 0
                     )
-                    > 0
+                    or (
+                        hasattr(knowledge_base, 'x_results')
+                        and len(knowledge_base.x_results) > 0
+                    )
                 ):
                     new_items = self.agent.update_agent_knowledge_base(knowledge_base)
                 else:
@@ -620,6 +616,7 @@ class AgentController:
                                 'x_results': [],
                             }
                         )
+        logger.debug(f'new_items_knowledge_base: {new_items}')
         return new_items
 
     async def _handle_message_action(self, action: MessageAction) -> None:
@@ -989,7 +986,7 @@ class AgentController:
                 ):
                     print('AgentFinishAction', action)
                     finish_message = action.final_thought
-                    await self.set_agent_state_to(AgentState.RUNNING)
+                    await self.set_agent_state_to(AgentState.FINISHED)
                     self.log(
                         'info',
                         'Intercepted AgentFinishAction before pushing to event stream',
