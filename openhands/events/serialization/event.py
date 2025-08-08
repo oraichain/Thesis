@@ -296,6 +296,15 @@ def _extract_from_finish_event(event_dict: dict) -> str | None:
                 return result
         except json.JSONDecodeError:
             pass
+    thought = event_dict.get('args', {}).get('thought', '')
+    if thought:
+        try:
+            json_result = _try_extract_json(thought)
+            if json_result:
+                result = json.dumps(json_result)
+                return result
+        except json.JSONDecodeError:
+            pass
 
     tool_call_metadata = event_dict.get('tool_call_metadata', {})
     model_response = tool_call_metadata.get('model_response', {})
@@ -450,7 +459,7 @@ def _try_extract_json(content: str) -> dict | None:
     json_patterns = [
         r'```json\s*\n?(.*?)\n?```',  # JSON in code blocks
         r'```\s*\n?(.*?)\n?```',  # General code blocks
-        r'\{.*?\}',  # JSON objects (including nested)
+        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # JSON objects with nested braces
     ]
 
     for pattern in json_patterns:
@@ -458,9 +467,33 @@ def _try_extract_json(content: str) -> dict | None:
         for match in matches:
             try:
                 clean_match = match.strip()
+                logger.debug(f'clean_match_json: {clean_match}')
                 if not clean_match.startswith('{'):
                     continue
-                return json.loads(clean_match)
+
+                # Try to parse as JSON
+                parsed_json = json.loads(clean_match)
+
+                # Validate it's actually a dictionary/object
+                if isinstance(parsed_json, dict):
+                    return parsed_json
             except json.JSONDecodeError:
                 continue
+
+    # Fallback: try to find any JSON-like structure in the content
+    try:
+        # Look for content that starts and ends with braces
+        brace_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(brace_pattern, content, re.DOTALL)
+
+        for match in matches:
+            try:
+                parsed_json = json.loads(match)
+                if isinstance(parsed_json, dict):
+                    return parsed_json
+            except json.JSONDecodeError:
+                continue
+    except Exception:
+        pass
+
     return None
