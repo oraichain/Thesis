@@ -33,7 +33,7 @@ from openhands.server.data_models.conversation_info import ConversationInfo
 from openhands.server.data_models.conversation_info_result_set import (
     ConversationInfoResultSet,
 )
-from openhands.server.modules import conversation_module, space_module
+from openhands.server.modules import conversation_module, space_section_module
 from openhands.server.session.conversation_init_data import ConversationInitData
 from openhands.server.shared import (
     ConversationStoreImpl,
@@ -275,18 +275,18 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                         'prompt': section_config['chartPrompt'],
                         'output': section_config['outputConfig'],
                     }
-                existed_config = await space_module._get_space_section_config(
+                existed_config = await space_section_module._get_space_section_config(
                     space_id, space_section_id
                 )
                 current_hash = get_hash(json.dumps(section_config))
                 if existed_config and existed_config['hash_config'] != current_hash:
-                    await space_module._delete_space_section_actions(
+                    await space_section_module._delete_space_section_actions(
                         space_id, space_section_id
                     )
                 if not existed_config or (
                     existed_config['hash_config'] != current_hash
                 ):
-                    await space_module._upsert_space_section_config(
+                    await space_section_module._upsert_space_section_config(
                         space_id, space_section_id, current_hash
                     )
                     # if space_id or thread_follow_up:

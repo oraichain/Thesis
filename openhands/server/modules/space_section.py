@@ -5,7 +5,7 @@ from openhands.server.db import database
 from openhands.server.models import SpaceSectionAction, SpaceSectionConfig
 
 
-class SpaceModule:
+class SpaceSectionModule:
     async def _get_space_section_config(self, space_id: int, space_section_id: int):
         """
         Get space section config by space_id and space_section_id
@@ -90,4 +90,4 @@ class SpaceModule:
             return None
 
 
-space_module = SpaceModule()
+space_section_module = SpaceSectionModule()
