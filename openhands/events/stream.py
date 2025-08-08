@@ -141,9 +141,15 @@ class EventStream(EventStore):
         subscriber_id: EventStreamSubscriber,
         callback: Callable[[Event], None],
         callback_id: str,
+        callback_max_workers: int = 1,
     ) -> None:
         initializer = partial(self._init_thread_loop, subscriber_id, callback_id)
-        pool = ThreadPoolExecutor(max_workers=1, initializer=initializer)
+        pool = ThreadPoolExecutor(
+            max_workers=callback_max_workers, 
+            initializer=initializer
+        )
+        if callback_max_workers > 1:
+            logger.info(f'callback_max_workers: {callback_max_workers}')
         if subscriber_id not in self._subscribers:
             self._subscribers[subscriber_id] = {}
             self._thread_pools[subscriber_id] = {}
