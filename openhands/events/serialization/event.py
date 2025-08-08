@@ -288,73 +288,75 @@ def _extract_from_finish_event(event_dict: dict) -> str | None:
     """Extract content from finish action tool calls."""
 
     final_thought = event_dict.get('args', {}).get('final_thought', '')
-    if final_thought:
-        try:
-            json_result = _try_extract_json(final_thought)
-            if json_result:
-                result = json.dumps(json_result)
-                return result
-        except json.JSONDecodeError:
-            pass
-    thought = event_dict.get('args', {}).get('thought', '')
-    if thought:
-        try:
-            json_result = _try_extract_json(thought)
-            if json_result:
-                result = json.dumps(json_result)
-                return result
-        except json.JSONDecodeError:
-            pass
+    return final_thought
+    # if final_thought:
+    #     try:
+    #         json_result = _try_extract_json(final_thought)
+    #         if json_result:
+    #             result = json.dumps(json_result)
+    #             return result
+    #     except json.JSONDecodeError:
+    #         pass
+    # thought = event_dict.get('args', {}).get('thought', '')
+    # if thought:
+    #     try:
+    #         json_result = _try_extract_json(thought)
+    #         if json_result:
+    #             result = json.dumps(json_result)
+    #             return result
+    #     except json.JSONDecodeError:
+    #         pass
 
-    tool_call_metadata = event_dict.get('tool_call_metadata', {})
-    model_response = tool_call_metadata.get('model_response', {})
-    choices = model_response.get('choices', [])
+    # tool_call_metadata = event_dict.get('tool_call_metadata', {})
+    # model_response = tool_call_metadata.get('model_response', {})
+    # choices = model_response.get('choices', [])
 
-    if choices and 'message' in choices[0]:
-        message_obj = choices[0]['message']
-        tool_calls = message_obj.get('tool_calls', [])
+    # if choices and 'message' in choices[0]:
+    #     message_obj = choices[0]['message']
+    #     tool_calls = message_obj.get('tool_calls', [])
 
-        content = message_obj.get('content', '')
-        if content and len(content.strip()) > 0:
-            # Try to extract JSON first
-            json_result = _try_extract_json(content)
-            if json_result:
-                result = json.dumps(json_result)
-                return result
+    #     content = message_obj.get('content', '')
+    #     if content and len(content.strip()) > 0:
+    #         # Try to extract JSON first
+    #         json_result = _try_extract_json(content)
+    #         if json_result:
+    #             result = json.dumps(json_result)
+    #             return result
 
-        # Extract the actual JSON from tool call arguments
-        if tool_calls and 'function' in tool_calls[0]:
-            arguments_str = tool_calls[0]['function'].get('arguments')
-            if arguments_str:
-                try:
-                    arguments_json = json.loads(arguments_str)
-                    # Extract the message field which contains the actual JSON result
-                    message_content = arguments_json.get('message', '')
+    #     # Extract the actual JSON from tool call arguments
+    #     if tool_calls and 'function' in tool_calls[0]:
+    #         arguments_str = tool_calls[0]['function'].get('arguments')
+    #         if arguments_str:
+    #             try:
+    #                 arguments_json = json.loads(arguments_str)
+    #                 # Extract the message field which contains the actual JSON result
+    #                 message_content = arguments_json.get('message', '')
 
-                    # Try to parse the message as JSON
-                    try:
-                        final_json = json.loads(message_content)
-                        result = json.dumps(final_json)
-                        return result
-                    except json.JSONDecodeError:
-                        return message_content
-                except json.JSONDecodeError:
-                    return arguments_str
-    return None
+    #                 # Try to parse the message as JSON
+    #                 try:
+    #                     final_json = json.loads(message_content)
+    #                     result = json.dumps(final_json)
+    #                     return result
+    #                 except json.JSONDecodeError:
+    #                     return message_content
+    #             except json.JSONDecodeError:
+    #                 return arguments_str
+    # return None
 
 
 def _extract_from_message_event(event_dict: dict) -> str | None:
     """Extract content from regular agent messages."""
     content = _extract_content_from_event(event_dict)
-    if content and len(content.strip()) > 10:
-        # Try to extract JSON first
-        json_result = _try_extract_json(content)
-        if json_result:
-            result = json.dumps(json_result)
-            return result
-        else:
-            return content
-    return None
+    return content
+    # if content and len(content.strip()) > 10:
+    #     # Try to extract JSON first
+    #     json_result = _try_extract_json(content)
+    #     if json_result:
+    #         result = json.dumps(json_result)
+    #         return result
+    #     else:
+    #         return content
+    # return None
 
 
 def _extract_from_read_event(event_dict: dict) -> str | None:
