@@ -145,8 +145,7 @@ class EventStream(EventStore):
     ) -> None:
         initializer = partial(self._init_thread_loop, subscriber_id, callback_id)
         pool = ThreadPoolExecutor(
-            max_workers=callback_max_workers, 
-            initializer=initializer
+            max_workers=callback_max_workers, initializer=initializer
         )
         if callback_max_workers > 1:
             logger.info(f'callback_max_workers: {callback_max_workers}')
