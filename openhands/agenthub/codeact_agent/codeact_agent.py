@@ -206,22 +206,6 @@ class CodeActAgent(Agent):
 
         logger.debug(f'Selected tools: {selected_tools}')
 
-        if self.rerun_section:
-            selected_tools = deepcopy(self.tools)
-            selected_tools = [
-                tool for tool in selected_tools if tool['function']['name'] != 'think'
-            ]
-            if hasattr(self, 'mcp_tools') and self.mcp_tools:
-                existing_names = {tool['function']['name'] for tool in selected_tools}
-                pyodide_mcp_tools = [
-                    tool
-                    for tool in self.mcp_tools
-                    if tool['function']['name'].startswith('pyodide_')
-                    and tool['function']['name'] not in existing_names
-                ]
-
-                selected_tools.extend(pyodide_mcp_tools)
-
         # NOTE:only for anthropic model, we need to set the cache_control for the tool list
         if 'claude' in self.llm.config.model and len(selected_tools) > 0:
             # Remove any existing cache_control first
