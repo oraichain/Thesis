@@ -279,13 +279,18 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                     space_id, space_section_id
                 )
                 current_hash = get_hash(json.dumps(section_config))
-                if existed_config and existed_config['hash_config'] != current_hash:
+                logger.debug(f'current_hash: {current_hash}')
+                if existed_config and (existed_config['hash_config'] != current_hash):
+                    logger.debug(
+                        f'Remove the space section actions: {space_section_id}'
+                    )
                     await space_section_module._delete_space_section_actions(
                         space_id, space_section_id
                     )
                 if not existed_config or (
                     existed_config['hash_config'] != current_hash
                 ):
+                    logger.debug(f'Upsert the space section config: {space_section_id}')
                     await space_section_module._upsert_space_section_config(
                         space_id, space_section_id, current_hash
                     )
