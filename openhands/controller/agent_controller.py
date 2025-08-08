@@ -825,7 +825,12 @@ class AgentController:
         )
 
         # Extract and save final JSON result when agent finishes or awaits user input
-        if new_state in (AgentState.FINISHED, AgentState.AWAITING_USER_INPUT):
+        if new_state in (
+            AgentState.FINISHED,
+            AgentState.AWAITING_USER_INPUT,
+            AgentState.STOPPED,
+            AgentState.ERROR,
+        ):
             await self._extract_and_save_final_result(self.id)
 
             # Save agent actions to space_section_actions if space_section_id is available
@@ -1225,7 +1230,7 @@ class AgentController:
                 self.event_stream.get_events_by_action(
                     actions=['edit', 'finish', 'message'],
                     observations=['read'],
-                    limit=20,
+                    limit=50,
                     reverse=True,
                     sid=session_id,
                 )
@@ -1295,6 +1300,10 @@ class AgentController:
                         break
 
             # Save the final result to database
+            self.log(
+                'final_result_conversation',
+                f'final_result: {final_result}, {self.id}',
+            )
             if final_result and save_result:
                 await self._save_final_result_to_database(session_id, final_result)
 
