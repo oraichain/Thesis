@@ -1301,7 +1301,7 @@ class AgentController:
 
             # Save the final result to database
             self.log(
-                'final_result_conversation',
+                'info',
                 f'final_result: {final_result}, {self.id}',
             )
             if final_result and save_result:
