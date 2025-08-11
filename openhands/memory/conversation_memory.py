@@ -72,6 +72,7 @@ class ConversationMemory:
         initial_messages: list[Message],
         max_message_chars: int | None = None,
         vision_is_active: bool = False,
+        user_context: str | None = None,
     ) -> list[Message]:
         """Process state history into a list of messages for the LLM.
 
@@ -104,6 +105,7 @@ class ConversationMemory:
                     action=event,
                     pending_tool_call_action_messages=pending_tool_call_action_messages,
                     vision_is_active=vision_is_active,
+                    user_context=user_context,
                 )
             elif isinstance(event, Observation):
                 messages_to_add = self._process_observation(
@@ -214,6 +216,7 @@ class ConversationMemory:
         action: Action,
         pending_tool_call_action_messages: dict[str, Message],
         vision_is_active: bool = False,
+        user_context: str | None = None,
     ) -> list[Message]:
         """Converts an action into a message format that can be sent to the LLM.
 
@@ -327,8 +330,11 @@ class ConversationMemory:
                 )
             ]
         elif isinstance(action, MessageAction):
+            new_content = action.content
+            if user_context:
+                new_content = f'{new_content}\n{user_context}'
             role = 'user' if action.source == 'user' else 'assistant'
-            content = [TextContent(text=f"""{action.content}""")]
+            content = [TextContent(text=f"""{new_content}""")]
             if vision_is_active and action.image_urls:
                 content.append(ImageContent(image_urls=action.image_urls))
             if role not in ('user', 'system', 'assistant', 'tool'):

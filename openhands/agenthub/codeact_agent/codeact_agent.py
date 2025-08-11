@@ -766,15 +766,16 @@ class CodeActAgent(Agent):
         # Use ConversationMemory to process events first (static cached content)
 
         user_context = self._handle_format_output()
-        if user_context:
-            messages.append(
-                Message(role='user', content=[TextContent(text=user_context)])
-            )
+        # if user_context:
+        #     messages.append(
+        #         Message(role='user', content=[TextContent(text=user_context)])
+        #     )
         messages = self.conversation_memory.process_events(
             condensed_history=events,
             initial_messages=messages,
             max_message_chars=self.llm.config.max_message_chars,
             vision_is_active=self.llm.vision_is_active(),
+            user_context=user_context,
         )
 
         messages = self._enhance_messages(messages)
