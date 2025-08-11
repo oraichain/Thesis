@@ -318,6 +318,7 @@ class CodeActAgent(Agent):
                                     self._stream_tool_input_arguments(
                                         func_delta.arguments,
                                         research_mode,
+                                        is_tool_pyodide=True,
                                     )
 
             else:
@@ -516,13 +517,18 @@ class CodeActAgent(Agent):
         self,
         arguments_chunk: str,
         research_mode: str | None = None,
+        is_tool_pyodide: bool = False,
     ):
         end_quote = self._find_unescaped_quote(arguments_chunk)
         if end_quote != -1:
             arguments_chunk = arguments_chunk[:end_quote]
         safe_content = self._get_safe_content(arguments_chunk)
         if safe_content and research_mode != ResearchMode.FOLLOW_UP:
-            self._emit_streaming_content(safe_content, is_tool_input_arguments=True)
+            self._emit_streaming_content(
+                safe_content,
+                is_tool_input_arguments=True,
+                is_tool_pyodide=is_tool_pyodide,
+            )
 
     def _get_safe_content(self, content: str) -> str:
         """Extract content safe to stream (avoid partial escapes)"""
@@ -557,7 +563,10 @@ class CodeActAgent(Agent):
         return -1
 
     def _emit_streaming_content(
-        self, content: str, is_tool_input_arguments: bool = False
+        self,
+        content: str,
+        is_tool_input_arguments: bool = False,
+        is_tool_pyodide: bool = False,
     ):
         """Emit streaming content through event stream"""
         if content and self.event_stream:
@@ -570,6 +579,7 @@ class CodeActAgent(Agent):
                     wait_for_response=False,
                     enable_process_llm=False,
                     is_tool_input_arguments=is_tool_input_arguments,
+                    is_tool_pyodide=is_tool_pyodide,
                 )
                 self.event_stream.add_event(action, EventSource.AGENT)
             except json.JSONDecodeError:
@@ -578,6 +588,7 @@ class CodeActAgent(Agent):
                     wait_for_response=False,
                     enable_process_llm=False,
                     is_tool_input_arguments=is_tool_input_arguments,
+                    is_tool_pyodide=is_tool_pyodide,
                 )
                 self.event_stream.add_event(action, EventSource.AGENT)
 
