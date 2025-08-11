@@ -56,6 +56,7 @@ class StreamingMessageAction(Action):
     wait_for_response: bool = False
     streaming: bool = True
     enable_process_llm: Optional[bool] = True
+    is_tool_input_arguments: bool = False
 
     @property
     def message(self) -> str:

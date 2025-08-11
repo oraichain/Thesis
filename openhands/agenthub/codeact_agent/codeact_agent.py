@@ -287,6 +287,11 @@ class CodeActAgent(Agent):
 
                             # Check if this is a "finish" or "think" function and stream the message content
                             function_name = target_tool_call['function']['name']
+
+                            logger.info(
+                                f'Processing tool call: {function_name}, arguments: {func_delta.arguments}'
+                            )
+
                             if function_name in ['finish', 'think']:
                                 self._stream_function_message(
                                     target_id,
@@ -294,6 +299,27 @@ class CodeActAgent(Agent):
                                     streaming_function_calls,
                                     research_mode,
                                 )
+                            elif function_name == 'str_replace_editor':
+                                file_text_start = target_tool_call['function'][
+                                    'arguments'
+                                ].find('"file_text": "')
+                                if file_text_start != -1:
+                                    self._stream_tool_input_arguments(
+                                        func_delta.arguments,
+                                        research_mode,
+                                    )
+                            elif (
+                                function_name == 'pyodide_execute_python_mcp_tool_call'
+                            ):
+                                file_text_start = target_tool_call['function'][
+                                    'arguments'
+                                ].find('"code": "')
+                                if file_text_start != -1:
+                                    self._stream_tool_input_arguments(
+                                        func_delta.arguments,
+                                        research_mode,
+                                    )
+
             else:
                 if delta.content:
                     accumulated_content += delta.content
@@ -486,6 +512,18 @@ class CodeActAgent(Agent):
         # Stream thought content if we found the start
         stream_field_content('thought_start', 'thought_streamed')
 
+    def _stream_tool_input_arguments(
+        self,
+        arguments_chunk: str,
+        research_mode: str | None = None,
+    ):
+        end_quote = self._find_unescaped_quote(arguments_chunk)
+        if end_quote != -1:
+            arguments_chunk = arguments_chunk[:end_quote]
+        safe_content = self._get_safe_content(arguments_chunk)
+        if safe_content and research_mode != ResearchMode.FOLLOW_UP:
+            self._emit_streaming_content(safe_content, is_tool_input_arguments=True)
+
     def _get_safe_content(self, content: str) -> str:
         """Extract content safe to stream (avoid partial escapes)"""
         if not content:
@@ -518,7 +556,9 @@ class CodeActAgent(Agent):
                     return i
         return -1
 
-    def _emit_streaming_content(self, content: str):
+    def _emit_streaming_content(
+        self, content: str, is_tool_input_arguments: bool = False
+    ):
         """Emit streaming content through event stream"""
         if content and self.event_stream:
             try:
@@ -526,12 +566,18 @@ class CodeActAgent(Agent):
 
                 decoded = json.loads(f'"{content}"')
                 action = StreamingMessageAction(
-                    content=decoded, wait_for_response=False, enable_process_llm=False
+                    content=decoded,
+                    wait_for_response=False,
+                    enable_process_llm=False,
+                    is_tool_input_arguments=is_tool_input_arguments,
                 )
                 self.event_stream.add_event(action, EventSource.AGENT)
             except json.JSONDecodeError:
                 action = StreamingMessageAction(
-                    content=content, wait_for_response=False, enable_process_llm=False
+                    content=content,
+                    wait_for_response=False,
+                    enable_process_llm=False,
+                    is_tool_input_arguments=is_tool_input_arguments,
                 )
                 self.event_stream.add_event(action, EventSource.AGENT)
 
