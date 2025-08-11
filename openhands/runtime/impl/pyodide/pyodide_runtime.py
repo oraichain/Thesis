@@ -58,7 +58,7 @@ class PyodideRuntime(ActionExecutionClient):
         if getattr(self, 'api_url', None):
             return self.api_url
         else:
-            call_async_from_sync(self.connect())
+            call_async_from_sync(self.connect)
             return self.api_url
 
     async def connect(self):
