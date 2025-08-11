@@ -677,18 +677,19 @@ async def update_space_section_history(
 
 async def check_member_space_permission(
     space_id: str,
+    bearer_token: str,
+    x_device_id: str | None = None,
 ) -> bool:
     url = f'/api/spaces/{space_id}/check-member'
     headers = {
         'Content-Type': 'application/json',
-        'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
+        'Authorization': bearer_token,
     }
+    if x_device_id:
+        headers['x-device-id'] = x_device_id
 
     response = await thesis_auth_client.get(url, headers=headers)
     if not check_success_response(response):
         return False
-        # raise HTTPException(
-        #     status_code=response.status_code,
-        #     detail=response.json().get('error', 'Unknown error'),
-        # )
+
     return True

@@ -117,7 +117,11 @@ async def connect(connection_id: str, environ):
         else:
             user_id = str(info['user_id'])
             if space_id:
-                is_member = await check_member_space_permission(space_id)
+                if not jwt_token:
+                    raise ConnectionRefusedError('Authentication required')
+                is_member = await check_member_space_permission(
+                    space_id, 'Bearer ' + jwt_token, x_device_id
+                )
                 if not is_member:
                     raise ConnectionRefusedError(
                         'You are not a member of space, please contact the space owner to get access.'
