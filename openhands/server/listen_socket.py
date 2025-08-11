@@ -32,12 +32,17 @@ from openhands.server.shared import (
 )
 from openhands.server.thesis_auth import (
     ThesisUser,
+    check_member_space_permission,
     get_system_prompt_by_space_id_from_thesis_auth_server,
     get_user_detail_from_thesis_auth_server,
 )
 from openhands.storage.conversation.conversation_store import ConversationStore
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
 from openhands.utils.get_user_setting import get_user_setting
+
+
+class SOCKET_ERROR_CODE:
+    NOT_MEMBER_SPACE = 'NOT_MEMBER_SPACE'
 
 
 def create_provider_tokens_object(
@@ -111,6 +116,12 @@ async def connect(connection_id: str, environ):
             raise ConnectionRefusedError(error)
         else:
             user_id = str(info['user_id'])
+            if space_id:
+                is_member = await check_member_space_permission(space_id)
+                if not is_member:
+                    raise ConnectionRefusedError(
+                        'You are not a member of space, please contact the space owner to get access.'
+                    )
             await conversation_module._update_research_view(
                 conversation_id, environ.get('REMOTE_ADDR', '')
             )

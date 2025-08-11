@@ -673,3 +673,22 @@ async def update_space_section_history(
             detail=response.json().get('error', 'Unknown error'),
         )
     return response.json()
+
+
+async def check_member_space_permission(
+    space_id: str,
+) -> bool:
+    url = f'/api/spaces/{space_id}/check-member'
+    headers = {
+        'Content-Type': 'application/json',
+        'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
+    }
+
+    response = await thesis_auth_client.get(url, headers=headers)
+    if not check_success_response(response):
+        return False
+        # raise HTTPException(
+        #     status_code=response.status_code,
+        #     detail=response.json().get('error', 'Unknown error'),
+        # )
+    return True
