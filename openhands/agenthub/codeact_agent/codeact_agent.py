@@ -3,7 +3,7 @@ import os
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, Optional, Union, override
+from typing import Any, Dict, Optional, Union, override
 
 from httpx import request
 
@@ -138,6 +138,9 @@ class CodeActAgent(Agent):
             and 'simple' in self.routing_llms
             else None
         )
+
+        self._tool_arg_buffer: dict[str, str] = {}  # Buffer for tool arguments
+        self._tool_state: Dict[str, Dict[str, Any]] = {}
 
     @override
     def set_system_prompt(self, system_prompt: str) -> None:
@@ -295,26 +298,32 @@ class CodeActAgent(Agent):
                                     research_mode,
                                 )
                             elif function_name == 'str_replace_editor':
-                                file_text_start = target_tool_call['function'][
-                                    'arguments'
-                                ].find('"file_text": "')
-                                if file_text_start != -1:
-                                    self._stream_tool_input_arguments(
-                                        func_delta.arguments,
-                                        research_mode,
-                                    )
+                                started, remainder = self._parse_tool_arguments(
+                                    target_id,
+                                    func_delta.arguments,
+                                    pattern='"file_text": "',
+                                )
+                                if not started:
+                                    continue
+                                self._stream_tool_input_arguments(
+                                    remainder,
+                                    research_mode,
+                                    tool_call_id=target_id,
+                                )
                             elif (
                                 function_name == 'pyodide_execute_python_mcp_tool_call'
                             ):
-                                file_text_start = target_tool_call['function'][
-                                    'arguments'
-                                ].find('"code": "')
-                                if file_text_start != -1:
-                                    self._stream_tool_input_arguments(
-                                        func_delta.arguments,
-                                        research_mode,
-                                        is_tool_pyodide=True,
-                                    )
+                                started, remainder = self._parse_tool_arguments(
+                                    target_id, func_delta.arguments, pattern='"code": "'
+                                )
+                                if not started:
+                                    continue
+                                self._stream_tool_input_arguments(
+                                    remainder,
+                                    research_mode,
+                                    tool_call_id=target_id,
+                                    is_tool_pyodide=True,
+                                )
 
             else:
                 if delta.content:
@@ -508,22 +517,59 @@ class CodeActAgent(Agent):
         # Stream thought content if we found the start
         stream_field_content('thought_start', 'thought_streamed')
 
+    def _parse_tool_arguments(
+        self, tool_call_id: str, chunk: str, pattern: str
+    ) -> tuple[bool, str]:
+        st = self._tool_state.setdefault(tool_call_id, {'found': False, 'buf': ''})
+        if st['found']:
+            return True, chunk
+
+        st['buf'] += chunk
+        idx = st['buf'].find(pattern)
+        if idx == -1:
+            keep = min(len(pattern) - 1, len(st['buf']))
+            st['buf'] = st['buf'][-keep:] if keep > 0 else ''
+            return False, ''
+
+        start = idx + len(pattern)
+        remainder = st['buf'][start:]
+        st['buf'] = ''
+        st['found'] = True
+        return True, remainder
+
     def _stream_tool_input_arguments(
         self,
         arguments_chunk: str,
         research_mode: str | None = None,
         is_tool_pyodide: bool = False,
+        tool_call_id: str | None = None,
     ):
-        end_quote = self._find_unescaped_quote(arguments_chunk)
-        if end_quote != -1:
-            arguments_chunk = arguments_chunk[:end_quote]
-        safe_content = self._get_safe_content(arguments_chunk)
+        merged = arguments_chunk
+        if tool_call_id:
+            prev = self._tool_arg_buffer.get(tool_call_id, '')
+            if prev:
+                merged = prev + arguments_chunk
+
+        trailing_backslashes = 0
+        i = len(merged) - 1
+        while i >= 0 and merged[i] == '\\':
+            trailing_backslashes += 1
+            i -= 1
+        ends_with_single_backslash = trailing_backslashes % 2 == 1
+
+        if tool_call_id and ends_with_single_backslash:
+            self._tool_arg_buffer[tool_call_id] = merged
+            return
+
+        safe_content = self._get_safe_content(merged)
         if safe_content and research_mode != ResearchMode.FOLLOW_UP:
             self._emit_streaming_content(
                 safe_content,
                 is_tool_input_arguments=True,
                 is_tool_pyodide=is_tool_pyodide,
             )
+        if tool_call_id and tool_call_id in self._tool_arg_buffer:
+            del self._tool_arg_buffer[tool_call_id]
 
     def _get_safe_content(self, content: str) -> str:
         """Extract content safe to stream (avoid partial escapes)"""
