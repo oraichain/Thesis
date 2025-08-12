@@ -43,6 +43,7 @@ from openhands.utils.get_user_setting import get_user_setting
 
 class SOCKET_ERROR_CODE:
     NOT_MEMBER_SPACE = 'NOT_MEMBER_SPACE'
+    REQUIRE_AUTHENTICATION = 'REQUIRE_AUTHENTICATION'
 
 
 def create_provider_tokens_object(
@@ -118,14 +119,14 @@ async def connect(connection_id: str, environ):
             user_id = str(info['user_id'])
             if space_id:
                 if not jwt_token:
-                    raise ConnectionRefusedError('Authentication required')
+                    raise ConnectionRefusedError(
+                        SOCKET_ERROR_CODE.REQUIRE_AUTHENTICATION
+                    )
                 is_member = await check_member_space_permission(
                     space_id, 'Bearer ' + jwt_token, x_device_id
                 )
                 if not is_member:
-                    raise ConnectionRefusedError(
-                        'You are not a member of space, please contact the space owner to get access.'
-                    )
+                    raise ConnectionRefusedError(SOCKET_ERROR_CODE.NOT_MEMBER_SPACE)
             await conversation_module._update_research_view(
                 conversation_id, environ.get('REMOTE_ADDR', '')
             )
