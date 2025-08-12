@@ -1,13 +1,8 @@
 from sqlalchemy import and_, delete
+
 from openhands.core.logger import openhands_logger as logger
-from openhands.server.models import SpaceSectionAction, SpaceSectionConfig
 from openhands.server.db import database
-from openhands.server.thesis_auth import (
-    get_list_sections,
-    get_list_space,
-    get_space_detail,
-    update_space_section_history,
-)
+from openhands.server.models import SpaceSectionAction, SpaceSectionConfig
 
 
 class SpaceSectionModule:
@@ -27,55 +22,6 @@ class SpaceSectionModule:
         except Exception as e:
             logger.error(f'Error getting space section config: {str(e)}')
             return None
-
-    async def get_list_space(
-        self, offset: int = 0, limit: int = 10, title: str | None = None
-    ) -> tuple[list[dict] | None, dict | None]:
-        list_space_response_data = await get_list_space(
-            bearer_token=self.bearer_token, offset=offset, limit=limit, title=title
-        )
-        if not list_space_response_data:
-            return [], {}
-        if not list_space_response_data.get('data'):
-            return [], {}
-        return (
-            list_space_response_data.get('data'),
-            list_space_response_data.get('pagination'),
-        )
-
-    async def get_space_detail(self, space_id: str) -> dict | None:
-        space_detail_response_data = await get_space_detail(
-            bearer_token=self.bearer_token, space_id=space_id
-        )
-        if not space_detail_response_data:
-            return None
-        if not space_detail_response_data.get('data'):
-            return None
-        return space_detail_response_data.get('data')
-
-    async def get_list_sections(self, space_id: str) -> list[dict] | None:
-        list_section_response_data = await get_list_sections(
-            bearer_token=self.bearer_token, space_id=space_id
-        )
-        if not list_section_response_data:
-            return []
-        if not list_section_response_data.get('data'):
-            return []
-        return list_section_response_data.get('data')
-
-    async def update_space_section_history(
-        self, space_id: str, section_id: str, conversation_id: str
-    ):
-        try:
-            await update_space_section_history(
-                space_id=space_id,
-                section_id=section_id,
-                conversation_id=conversation_id,
-                bearer_token=self.bearer_token,
-            )
-        except Exception as e:
-            logger.error(f'Error upserting space section config with raw SQL: {str(e)}')
-            return False
 
     async def _update_space_section_config_hash(
         self, space_id: int, space_section_id: int, hash_config: str
@@ -115,6 +61,33 @@ class SpaceSectionModule:
         except Exception as e:
             logger.error(f'Error deleting space section actions: {str(e)}')
             return None
+
+    async def _upsert_space_section_config(
+        self, space_id: int, space_section_id: int, hash_config: str
+    ):
+        try:
+            # Use named parameters for SQLAlchemy
+            sql = """
+            INSERT INTO space_section_configs (space_id, space_section_id, hash_config)
+            VALUES (:space_id, :space_section_id, :hash_config)
+            ON CONFLICT (space_id, space_section_id)
+            DO UPDATE SET
+                hash_config = EXCLUDED.hash_config,
+                updated_at = CURRENT_TIMESTAMP
+        """
+
+            await database.execute(
+                sql,
+                {
+                    'space_id': space_id,
+                    'space_section_id': space_section_id,
+                    'hash_config': hash_config,
+                },
+            )
+            return True
+        except Exception as e:
+            logger.error(f'Error upserting space section config with raw SQL: {str(e)}')
+            return False
 
 
 space_section_module = SpaceSectionModule()
