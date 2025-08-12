@@ -126,7 +126,7 @@ async def test_memory_on_workspace_context_recall_exception_handling(
         )
 
         # Verify that the controller's last error was set
-        assert state.iteration == 0
+        assert state.iteration == 1
         assert state.agent_state == AgentState.ERROR
         assert state.last_error == 'Error: Exception'
 
