@@ -829,7 +829,7 @@ class AgentController:
             AgentState.FINISHED,
             AgentState.AWAITING_USER_INPUT,
             AgentState.STOPPED,
-            AgentState.ERROR,
+            # AgentState.ERROR,
         ):
             await self._extract_and_save_final_result(self.id)
 

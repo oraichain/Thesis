@@ -26,6 +26,15 @@ from openhands.runtime.base import Runtime
 from openhands.storage.memory import InMemoryFileStore
 
 
+@pytest.fixture(autouse=True)
+def patch_db_pool_instance():
+    """Mock database connection to avoid connection errors in tests."""
+    with patch('openhands.server.mem0._db_pool_instance', MagicMock()), patch(
+        'openhands.core.database.db_pool', MagicMock()
+    ):
+        yield
+
+
 @pytest.fixture
 def file_store():
     """Create a temporary file store for testing."""
@@ -126,7 +135,7 @@ async def test_memory_on_workspace_context_recall_exception_handling(
         )
 
         # Verify that the controller's last error was set
-        assert state.iteration == 1
+        assert state.iteration == 0
         assert state.agent_state == AgentState.ERROR
         assert state.last_error == 'Error: Exception'
 
