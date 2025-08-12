@@ -14,13 +14,14 @@ from typing import AsyncGenerator, Callable, cast
 from zipfile import ZipFile
 
 import httpx
-
-from openhands.a2a.A2AManager import A2AManager
-from openhands.a2a.common.types import (
+from a2a.types import (
+    JSONRPCErrorResponse,
     Task,
     TaskArtifactUpdateEvent,
     TaskStatusUpdateEvent,
 )
+
+from openhands.a2a.A2AManager import A2AManager
 from openhands.core.config import AppConfig, SandboxConfig
 from openhands.core.exceptions import AgentRuntimeDisconnectedError
 from openhands.core.logger import openhands_logger as logger
@@ -635,12 +636,16 @@ class Runtime(FileEditRuntimeMixin):
                 f'Sending task to {action.agent_name} message: {action.task_message}'
             )
             try:
-                async for task_response in self.a2a_manager.send_task(
+                async for task_response in self.a2a_manager.send_message(
                     action.agent_name, action.task_message, self.sid
                 ):
-                    if task_response is None or task_response.result is None:
+                    if (
+                        task_response is None
+                        or task_response.root is None
+                        or isinstance(task_response.root, JSONRPCErrorResponse)
+                    ):
                         continue
-                    result = task_response.result
+                    result = task_response.root.result
 
                     if isinstance(result, TaskStatusUpdateEvent):
                         logger.debug(

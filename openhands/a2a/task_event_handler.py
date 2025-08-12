@@ -1,4 +1,5 @@
-from openhands.a2a.common.types import TaskState, TaskStatusUpdateEvent
+from a2a.types import TaskState, TaskStatusUpdateEvent, TextPart
+
 from openhands.core.message import TextContent
 from openhands.events.observation.a2a import A2ASendTaskUpdateObservation
 
@@ -11,20 +12,21 @@ class TaskEventHandler:
             return True
         state = task_update_event.status.state
         match state:
-            case TaskState.SUBMITTED:
+            case TaskState.submitted:
                 return False
-            case TaskState.WORKING:
+            case TaskState.working:
                 return False
-            case TaskState.COMPLETED:
+            case TaskState.completed:
                 return False
-            case TaskState.UNKNOWN:
+            case TaskState.unknown:
                 return False
-            case TaskState.INPUT_REQUIRED:
+            case TaskState.input_required:
                 return False
-            case TaskState.CANCELED:
+            case TaskState.canceled:
                 return False
-            case TaskState.FAILED:
+            case TaskState.failed:
                 return True
+        raise ValueError(f'Unknown task state: {state}')
 
     @staticmethod
     def handle_observation(
@@ -35,27 +37,30 @@ class TaskEventHandler:
             return None
         state = task_update_event.status.state
         match state:
-            case TaskState.SUBMITTED:
+            case TaskState.submitted:
                 return None
-            case TaskState.WORKING:
+            case TaskState.working:
                 return None
-            case TaskState.COMPLETED:
+            case TaskState.completed:
                 return None
-            case TaskState.UNKNOWN:
+            case TaskState.unknown:
                 return None
-            case TaskState.CANCELED:
+            case TaskState.canceled:
                 return None
-            case TaskState.FAILED:
+            case TaskState.failed:
                 return None
-            case TaskState.INPUT_REQUIRED:
+            case TaskState.input_required:
                 if task_update_event.status.message:
                     return [
                         TextContent(
                             text=f'Agent {event.agent_name} is waiting for input'
                         ),
                         *[
-                            TextContent(text=part.text)
+                            TextContent(text=part.root.text)
                             for part in task_update_event.status.message.parts
+                            if isinstance(part.root, TextPart)
                         ],
                     ]
                 return None
+
+        raise ValueError(f'Unknown task state: {state}')

@@ -1,9 +1,10 @@
-from openhands.a2a.common.types import (
+from a2a.types import (
     Message,
     TaskState,
     TaskStatus,
     TextPart,
 )
+
 from openhands.a2a.task_event_handler import TaskEventHandler
 from openhands.core.message import TextContent
 from openhands.events.observation.a2a import A2ASendTaskUpdateObservation
@@ -11,7 +12,7 @@ from openhands.events.observation.a2a import A2ASendTaskUpdateObservation
 
 def create_task_update_observation(
     task_id: str = 'task123',
-    state: TaskState = TaskState.WORKING,
+    state: TaskState = TaskState.working,
     final: bool = False,
     message_text: str = 'Task update message',
 ) -> A2ASendTaskUpdateObservation:
@@ -91,12 +92,12 @@ def test_should_step_on_task_update_non_action_states():
     """Test that should_step_on_task_update returns False for states that don't require action"""
     # Test all states that should return False
     non_action_states = [
-        TaskState.SUBMITTED,
-        TaskState.WORKING,
-        TaskState.COMPLETED,
-        TaskState.UNKNOWN,
-        TaskState.INPUT_REQUIRED,
-        TaskState.CANCELED,
+        TaskState.submitted,
+        TaskState.working,
+        TaskState.completed,
+        TaskState.unknown,
+        TaskState.input_required,
+        TaskState.canceled,
     ]
 
     for state in non_action_states:
@@ -110,7 +111,7 @@ def test_should_step_on_task_update_non_action_states():
 def test_handle_observation_input_required_with_message():
     """Test handle_observation returns message text for INPUT_REQUIRED state with a message"""
     observation = create_task_update_observation(
-        state=TaskState.INPUT_REQUIRED, message_text='Please provide more information'
+        state=TaskState.input_required, message_text='Please provide more information'
     )
 
     result = TaskEventHandler.handle_observation(observation)
@@ -149,12 +150,12 @@ def test_handle_observation_input_required_without_message():
 def test_handle_observation_non_input_required_states():
     """Test handle_observation returns None for states other than INPUT_REQUIRED"""
     non_input_states = [
-        TaskState.SUBMITTED,
-        TaskState.WORKING,
-        TaskState.COMPLETED,
-        TaskState.UNKNOWN,
-        TaskState.FAILED,
-        TaskState.CANCELED,
+        TaskState.submitted,
+        TaskState.working,
+        TaskState.completed,
+        TaskState.unknown,
+        TaskState.failed,
+        TaskState.canceled,
     ]
 
     for state in non_input_states:
@@ -167,7 +168,7 @@ def test_handle_observation_non_input_required_states():
 
 def test_handle_observation_final_true():
     """Test handle_observation returns None when final is True"""
-    observation = create_task_update_observation(state=TaskState.COMPLETED, final=True)
+    observation = create_task_update_observation(state=TaskState.completed, final=True)
 
     result = TaskEventHandler.handle_observation(observation)
 

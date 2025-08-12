@@ -1,6 +1,5 @@
 import yaml
-
-from openhands.a2a.common.types import DataPart, Part
+from a2a.types import DataPart, Part, TextPart
 
 
 def convert_parts(parts: list[Part]) -> list[str | DataPart]:
@@ -11,9 +10,9 @@ def convert_parts(parts: list[Part]) -> list[str | DataPart]:
 
 
 def convert_part(part: Part):
-    if part.type == 'text':
-        return part.text
-    elif part.type == 'data':
+    if isinstance(part.root, TextPart):
+        return part.root.text
+    elif isinstance(part.root, DataPart):
         # Convert data dictionary to YAML format for better readability
         try:
             # Add a header and use explicit_start=True for better YAML formatting
@@ -21,7 +20,7 @@ def convert_part(part: Part):
                 '# Data content converted to YAML format for better readability\n'
             )
             yaml_content = yaml.dump(
-                part.data,
+                part.root.data,
                 default_flow_style=False,
                 sort_keys=False,
                 explicit_start=True,
@@ -30,7 +29,9 @@ def convert_part(part: Part):
             return yaml_header + yaml_content
         except Exception as e:
             # Fallback to original data if YAML conversion fails
-            return f'Error converting to YAML: {str(e)}\nOriginal data: {part.data}'
+            return (
+                f'Error converting to YAML: {str(e)}\nOriginal data: {part.root.data}'
+            )
     # elif part.type == "file":
     #     # Repackage A2A FilePart to google.genai Blob
     #     # Currently not considering plain text as files

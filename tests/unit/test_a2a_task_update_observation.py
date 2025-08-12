@@ -4,10 +4,10 @@ from typing import Any, Dict
 from unittest.mock import MagicMock
 
 import pytest
-
-from openhands.a2a.common.types import (
+from a2a.types import (
     TaskState,
 )
+
 from openhands.controller.agent import Agent
 from openhands.controller.agent_controller import AgentController
 from openhands.core.config import LLMConfig
@@ -76,7 +76,7 @@ def conversation_memory(mock_agent, prompt_dir):
 
 def create_task_update_event(
     task_id: str = 'task123',
-    state: TaskState = TaskState.WORKING,
+    state: TaskState = TaskState.working,
     final: bool = False,
     message_text: str = 'Task update message',
 ) -> Dict[str, Any]:
@@ -113,7 +113,7 @@ def create_task_update_event(
 @pytest.mark.asyncio
 async def test_handle_observation_input_required(agent_controller):
     """Test handling of A2ASendTaskUpdateObservation with INPUT_REQUIRED state"""
-    task_update_event = create_task_update_event(state=TaskState.INPUT_REQUIRED)
+    task_update_event = create_task_update_event(state=TaskState.input_required)
 
     observation = A2ASendTaskUpdateObservation(
         content='Input required',
@@ -135,7 +135,7 @@ async def test_handle_observation_input_required(agent_controller):
 async def test_handle_observation_other_states(agent_controller):
     """Test handling of A2ASendTaskUpdateObservation with other states"""
     # Test with WORKING state
-    task_update_event = create_task_update_event(state=TaskState.WORKING)
+    task_update_event = create_task_update_event(state=TaskState.working)
 
     observation = A2ASendTaskUpdateObservation(
         content='Agent is working',
@@ -155,7 +155,7 @@ async def test_handle_observation_other_states(agent_controller):
 
 def test_should_step_failed_state(agent_controller):
     """Test should_step returns True for FAILED state"""
-    task_update_event = create_task_update_event(state=TaskState.FAILED, final=False)
+    task_update_event = create_task_update_event(state=TaskState.failed, final=False)
 
     observation = A2ASendTaskUpdateObservation(
         content='Task failed',
@@ -169,7 +169,7 @@ def test_should_step_failed_state(agent_controller):
 
 def test_should_step_working_state(agent_controller):
     """Test should_step returns False for WORKING state"""
-    task_update_event = create_task_update_event(state=TaskState.WORKING, final=False)
+    task_update_event = create_task_update_event(state=TaskState.working, final=False)
 
     observation = A2ASendTaskUpdateObservation(
         content='Agent is working',
@@ -184,7 +184,7 @@ def test_should_step_working_state(agent_controller):
 def test_should_step_input_required(agent_controller):
     """Test should_step returns False for INPUT_REQUIRED state"""
     task_update_event = create_task_update_event(
-        state=TaskState.INPUT_REQUIRED, final=False
+        state=TaskState.input_required, final=False
     )
 
     observation = A2ASendTaskUpdateObservation(
@@ -200,7 +200,7 @@ def test_should_step_input_required(agent_controller):
 def test_should_step_final_true(agent_controller):
     """Test should_step returns TaskEventHandler.should_step_on_task_update(event) when final=True"""
     # Create event with final=True
-    task_update_event = create_task_update_event(state=TaskState.COMPLETED, final=True)
+    task_update_event = create_task_update_event(state=TaskState.completed, final=True)
 
     observation = A2ASendTaskUpdateObservation(
         content='Task completed',
@@ -228,7 +228,7 @@ def test_should_step_delegate_controller(
     # Set the delegate
     agent_controller.delegate = delegate
 
-    task_update_event = create_task_update_event(state=TaskState.FAILED, final=False)
+    task_update_event = create_task_update_event(state=TaskState.failed, final=False)
 
     observation = A2ASendTaskUpdateObservation(
         content='Task failed',
@@ -254,7 +254,7 @@ async def test_observation_event_interaction(agent_controller, mock_event_stream
     mock_event_stream.add_event = mock_add_event
 
     # Create an observation with INPUT_REQUIRED
-    task_update_event = create_task_update_event(state=TaskState.INPUT_REQUIRED)
+    task_update_event = create_task_update_event(state=TaskState.input_required)
 
     observation = A2ASendTaskUpdateObservation(
         content='Input required',
@@ -293,7 +293,7 @@ async def test_input_required_followed_by_user_response(
 
     # Step 2: Send an INPUT_REQUIRED task update
     task_update_event = create_task_update_event(
-        state=TaskState.INPUT_REQUIRED,
+        state=TaskState.input_required,
         message_text='Please provide additional information for this task',
     )
 

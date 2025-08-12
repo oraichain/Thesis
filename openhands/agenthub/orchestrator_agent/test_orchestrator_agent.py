@@ -2,9 +2,9 @@
 import os
 
 import pytest
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 from openhands.a2a.A2AManager import A2AManager
-from openhands.a2a.common.types import AgentCapabilities, AgentCard, AgentSkill
 from openhands.agenthub.orchestrator_agent.orchestrator_agent import (
     OrchestrationPhase,
     OrchestratorAgent,

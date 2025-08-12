@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 
-from openhands.a2a.common.types import (
+from a2a.types import (
     Task,
     TaskArtifactUpdateEvent,
     TaskStatusUpdateEvent,
 )
+
 from openhands.core.schema import ObservationType
 from openhands.events.observation.observation import Observation
 

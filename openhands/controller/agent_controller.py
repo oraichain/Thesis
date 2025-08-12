@@ -7,6 +7,7 @@ import uuid
 from typing import Any, Callable, ClassVar, Optional, Type
 
 import litellm  # noqa
+from a2a.types import TaskState, TaskStatusUpdateEvent
 from litellm.exceptions import (  # noqa
     APIConnectionError,
     APIError,
@@ -23,7 +24,6 @@ from litellm.exceptions import (  # noqa
 )
 
 from openhands.a2a.A2AManager import A2AManager
-from openhands.a2a.common.types import TaskState, TaskStatusUpdateEvent
 from openhands.a2a.task_event_handler import TaskEventHandler
 from openhands.controller.agent import Agent
 from openhands.controller.replay import ReplayManager
@@ -569,7 +569,7 @@ class AgentController:
             return
         if isinstance(observation, A2ASendTaskUpdateObservation):
             task_update_event = TaskStatusUpdateEvent(**observation.task_update_event)
-            if task_update_event.status.state == TaskState.INPUT_REQUIRED:
+            if task_update_event.status.state == TaskState.input_required:
                 await self.set_agent_state_to(AgentState.AWAITING_USER_INPUT)
         elif isinstance(observation, ErrorObservation):
             if self.state.agent_state == AgentState.ERROR:

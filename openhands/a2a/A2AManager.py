@@ -3,18 +3,18 @@ import uuid
 from abc import ABC
 from typing import AsyncGenerator, List
 
-from openhands.a2a.client.card_resolver import A2ACardResolver
-from openhands.a2a.client.client import A2AClient
-from openhands.a2a.common.types import (
-    A2AClientHTTPError,
-    A2AClientJSONError,
+from a2a.client import A2ACardResolver, A2AClient
+from a2a.client.errors import A2AClientHTTPError, A2AClientJSONError
+from a2a.types import (
     AgentCard,
     Message,
-    SendTaskResponse,
-    SendTaskStreamingResponse,
-    TaskSendParams,
+    MessageSendParams,
+    SendMessageRequest,
+    SendMessageResponse,
+    SendStreamingMessageResponse,
     TextPart,
 )
+
 from openhands.core.logger import openhands_logger as logger
 
 
@@ -73,9 +73,9 @@ class A2AManager(ABC):
             )
         return remote_agent_info
 
-    async def send_task(
-        self, agent_name: str, message: str, sid: str
-    ) -> AsyncGenerator[SendTaskStreamingResponse | SendTaskResponse, None]:
+    async def send_message(
+        self, agent_name: str, message: str, sid: str, role: str = 'user'
+    ) -> AsyncGenerator[SendStreamingMessageResponse | SendMessageResponse, None]:
         """Send a task to a remote agent and yield task responses.
 
         Args:
@@ -91,25 +91,29 @@ class A2AManager(ABC):
 
         card = self.list_remote_agent_cards[agent_name]
         client = A2AClient(card)
-        request: TaskSendParams = TaskSendParams(
-            id=str(uuid.uuid4()),
+        params: MessageSendParams = MessageSendParams(
             sessionId=sid,
             message=Message(
-                role='user',
+                role=role,
                 parts=[TextPart(text=message)],
                 metadata={},
             ),
             acceptedOutputModes=['text', 'text/plain', 'image/png'],
-            metadata={'conversation_id': sid},
+            metadata={'conversation_id': sid, 'session_id': sid},
+        )
+        request: SendMessageRequest = SendMessageRequest(
+            id=str(uuid.uuid4()),
+            sessionId=sid,
+            params=params,
         )
 
         logger.info(f'Sending task to {agent_name} with message: {message}')
         logger.info(f'Card capabilities: {card.capabilities}')
         if card.capabilities.streaming:
-            async for response in client.send_task_streaming(request):
+            async for response in client.send_message_streaming(request=request):
                 yield response
         else:
-            response = await client.send_task(request)
+            response = await client.send_message(request=request)
             yield response
 
     # async def send_cancel_task(self, task_id: str, sid: str):
