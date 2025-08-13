@@ -296,7 +296,8 @@ async def new_conversation(request: Request, data: InitSessionRequest):
                 existed_config = await space_section_module._get_space_section_config(
                     space_id, space_section_id
                 )
-                current_hash = get_hash(json.dumps(section_config))
+                modified_config = {**section_config, 'userPrompt': user_prompt}
+                current_hash = get_hash(json.dumps(modified_config))
                 logger.debug(f'current_hash: {current_hash}')
                 if existed_config and (existed_config['hash_config'] != current_hash):
                     logger.debug(
