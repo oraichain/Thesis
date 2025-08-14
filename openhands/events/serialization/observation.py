@@ -3,7 +3,7 @@ from typing import Any
 
 from openhands.events.event import RecallType
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskResponseObservation,
     A2ASendTaskUpdateObservation,
@@ -67,7 +67,6 @@ observations = (
     MCPObservation,
     BrowserMCPObservation,
     PlanObservation,
-    A2AListRemoteAgentsObservation,
     A2ASendTaskUpdateObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskResponseObservation,
@@ -75,6 +74,7 @@ observations = (
     CreditErrorObservation,
     OrchestratorInitializeObservation,
     OrchestratorFinalObservation,
+    A2ASendMessageResponseObservation,
 )
 
 OBSERVATION_TYPE_TO_CLASS = {

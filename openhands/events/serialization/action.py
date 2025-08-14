@@ -2,7 +2,6 @@ from typing import Any
 
 from openhands.core.exceptions import LLMMalformedActionError
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.action.action import Action
@@ -52,7 +51,6 @@ actions = (
     MessageAction,
     CondensationAction,
     McpAction,
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
     StreamingMessageAction,
     KnowledgeBaseAction,

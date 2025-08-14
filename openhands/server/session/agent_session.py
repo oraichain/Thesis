@@ -5,6 +5,7 @@ from logging import LoggerAdapter
 from types import MappingProxyType
 from typing import Callable, cast
 
+from openhands.a2a.A2AManager import A2AManager
 from openhands.controller import AgentController
 from openhands.controller.agent import Agent
 from openhands.controller.replay import ReplayManager
@@ -131,17 +132,16 @@ class AgentSession:
         runtime_connected = False
         self.config = config
         # Initialize A2A manager before creating controller
-        # FIXME: Uncomment this for A2A implementation
-        # a2a_manager: A2AManager | None = None
-        # try:
-        #     a2a_manager = A2AManager(agent.config.a2a_server_urls)
-        #     await a2a_manager.initialize_agent_cards()
-        # except Exception as e:
-        #     self.logger.warning(f'Error initializing A2A manager: {e}')
-        #     a2a_manager = None
-        # # If the agent has its own A2A manager, use that instead of the one we just created
-        # if a2a_manager is not None:
-        #     agent.a2a_manager = agent.a2a_manager
+        a2a_manager: A2AManager | None = None
+        try:
+            a2a_manager = A2AManager(agent.config.a2a_server_urls)
+            await a2a_manager.initialize_agent_cards()
+        except Exception as e:
+            self.logger.warning(f'Error initializing A2A manager: {e}')
+            a2a_manager = None
+        # If the agent has its own A2A manager, use that instead of the one we just created
+        if a2a_manager is not None:
+            agent.a2a_manager = agent.a2a_manager
         try:
             self._create_security_analyzer(config.security.security_analyzer)
             start_time = time.time()

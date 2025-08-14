@@ -39,7 +39,6 @@ from openhands.events.action import (
     MessageAction,
 )
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.event import FileEditSource, FileReadSource
@@ -248,8 +247,6 @@ def _parse_tool_call(
             return AgentThinkAction(
                 thought=f'MCP tool {tool_name} is not available. Please check the available tools and retry with an existing tool.'
             )
-    elif tool_name == 'a2a_list_remote_agents':
-        return A2AListRemoteAgentsAction()
     elif tool_name == 'a2a_send_task':
         _validate_required_args(tool_name, arguments, ['agent_name', 'task_message'])
         return A2ASendTaskAction(

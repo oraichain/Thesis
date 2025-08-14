@@ -9,7 +9,7 @@ from httpx import request
 
 import openhands.agenthub.codeact_agent.function_calling as codeact_function_calling
 from openhands.a2a.A2AManager import A2AManager
-from openhands.a2a.tool import ListRemoteAgents, SendTask
+from openhands.a2a.tool import SendTask
 from openhands.agenthub.codeact_agent.tools.finish import FinishTool
 from openhands.controller.agent import Agent
 from openhands.controller.state.state import State
@@ -146,18 +146,12 @@ class CodeActAgent(Agent):
         if self.prompt_manager:
             self.prompt_manager.set_system_message(system_prompt)
             self.conversation_memory.prompt_manager.set_system_message(system_prompt)
-        logger.info(
-            f'New system prompt: {self.conversation_memory.process_initial_messages()}'
-        )
 
     @override
     def set_user_prompt(self, user_prompt: str) -> None:
         self.user_prompt = user_prompt
         if self.prompt_manager:
             self.prompt_manager.set_user_message(user_prompt)
-        logger.info(
-            f'New user prompt: {self.conversation_memory.process_initial_messages()}'
-        )
 
     def reset(self) -> None:
         """Resets the CodeAct Agent."""
@@ -173,7 +167,7 @@ class CodeActAgent(Agent):
             selected_tools = deepcopy(self.tools)
 
             if self.config.a2a_server_urls:
-                selected_tools.extend([ListRemoteAgents, SendTask])
+                selected_tools.append(SendTask)
 
             # Add search tools, avoiding duplicates
             existing_names = {tool['function']['name'] for tool in selected_tools}
@@ -203,6 +197,8 @@ class CodeActAgent(Agent):
                 if tool['function']['name'] not in existing_names
             ]
             selected_tools.extend(unique_search_tools)
+            if self.config.a2a_server_urls:
+                selected_tools.append(SendTask)
 
         logger.debug(f'Selected tools: {selected_tools}')
 
@@ -359,9 +355,11 @@ class CodeActAgent(Agent):
                             {
                                 'message': {
                                     'role': 'assistant',
-                                    'content': accumulated_content
-                                    if accumulated_content
-                                    else None,
+                                    'content': (
+                                        accumulated_content
+                                        if accumulated_content
+                                        else None
+                                    ),
                                     'tool_calls': formatted_tool_calls,
                                 },
                                 'index': 0,
@@ -765,16 +763,11 @@ class CodeActAgent(Agent):
                     }
                     for tool in self.search_tools
                 ],
+                agent_infos=agent_infos,
             )
         knowledge_base = self._handle_knowledge_base()
         if knowledge_base:
             messages[0].content.append(TextContent(text=knowledge_base))
-            # messages.append(
-            #     Message(
-            #         role='user',
-            #         content=[TextContent(text=knowledge_base)],
-            #     )
-            # )
 
         # Use ConversationMemory to process events first (static cached content)
 

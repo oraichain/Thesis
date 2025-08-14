@@ -15,7 +15,9 @@ from zipfile import ZipFile
 
 import httpx
 from a2a.types import (
+    Artifact,
     JSONRPCErrorResponse,
+    Message,
     Task,
     TaskArtifactUpdateEvent,
     TaskStatusUpdateEvent,
@@ -39,7 +41,6 @@ from openhands.events.action import (
     OrchestratorFinalAnswerAction,
 )
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.action.mcp import McpAction
@@ -55,7 +56,6 @@ from openhands.events.observation import (
     UserRejectObservation,
 )
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskResponseObservation,
     A2ASendTaskUpdateObservation,
@@ -339,9 +339,7 @@ class Runtime(FileEditRuntimeMixin):
                 # we don't call call_tool_mcp impl directly because there can be other action ActionExecutionClient
                 logger.debug(f'Calling call_tool_mcp with event: {event}')
                 observation = await getattr(self, McpAction.action)(event)
-            elif isinstance(event, A2AListRemoteAgentsAction) or isinstance(
-                event, A2ASendTaskAction
-            ):
+            elif isinstance(event, A2ASendTaskAction):
                 async for observation in self.call_a2a(event):
                     if observation is not None:
                         observation._cause = event.id  # type: ignore[attr-defined]
@@ -622,59 +620,71 @@ class Runtime(FileEditRuntimeMixin):
         pass
 
     async def call_a2a(
-        self, action: A2AListRemoteAgentsAction | A2ASendTaskAction
+        self, action: A2ASendTaskAction
     ) -> AsyncGenerator[Observation, None]:
         if self.a2a_manager is None:
             yield ErrorObservation('A2A manager is not set')
             return
 
-        if isinstance(action, A2AListRemoteAgentsAction):
-            list_agent = self.a2a_manager.list_remote_agents()
-            yield A2AListRemoteAgentsObservation(content=json.dumps(list_agent))
-        elif isinstance(action, A2ASendTaskAction):
-            logger.info(
-                f'Sending task to {action.agent_name} message: {action.task_message}'
-            )
-            try:
-                async for task_response in self.a2a_manager.send_message(
-                    action.agent_name, action.task_message, self.sid
+        try:
+            async for task_response in self.a2a_manager.send_message(
+                action.agent_name, action.task_message, self.sid
+            ):
+                if (
+                    task_response is None
+                    or task_response.root is None
+                    or isinstance(task_response.root, JSONRPCErrorResponse)
                 ):
-                    if (
-                        task_response is None
-                        or task_response.root is None
-                        or isinstance(task_response.root, JSONRPCErrorResponse)
-                    ):
-                        continue
-                    result = task_response.root.result
+                    continue
+                result = task_response.root.result
 
-                    if isinstance(result, TaskStatusUpdateEvent):
-                        logger.debug(
-                            f"""
-                            Agent Name: {action.agent_name}
-                            Task Update Event: {result}
-                            Task Content: {result.model_dump_json()}
-                            """
-                        )
-                        yield A2ASendTaskUpdateObservation(
-                            agent_name=action.agent_name,
-                            task_update_event=result,
-                            content=result.model_dump_json(),
-                        )
-                    elif isinstance(result, TaskArtifactUpdateEvent):
-                        yield A2ASendTaskArtifactObservation(
-                            agent_name=action.agent_name,
-                            task_artifact_event=result,
-                            content=result.model_dump_json(),
-                        )
-                    elif isinstance(result, Task):
-                        yield A2ASendTaskResponseObservation(
-                            agent_name=action.agent_name,
-                            task=result,
-                            content=result.model_dump_json(),
-                        )
-            except Exception as e:
-                yield ErrorObservation(f'Error sending task: {e}')
-                return
+                if isinstance(result, TaskStatusUpdateEvent):
+                    logger.debug(
+                        f"""
+                        Agent Name: {action.agent_name}
+                        Task Update Event: {result}
+                        Task Content: {result.model_dump_json()}
+                        """
+                    )
+                    yield A2ASendTaskUpdateObservation(
+                        agent_name=action.agent_name,
+                        task_update_event=result,
+                        content=result.model_dump_json(),
+                    )
+                elif isinstance(result, TaskArtifactUpdateEvent):
+                    yield A2ASendTaskArtifactObservation(
+                        agent_name=action.agent_name,
+                        task_artifact_event=result,
+                        content=result.model_dump_json(),
+                    )
+                elif isinstance(result, Task):
+                    yield A2ASendTaskResponseObservation(
+                        agent_name=action.agent_name,
+                        task=result,
+                        content=result.model_dump_json(),
+                    )
+                # FIXME: Create a seperate message class instead of using task artifact observation
+                elif isinstance(result, Message):
+                    yield A2ASendTaskArtifactObservation(
+                        agent_name=action.agent_name,
+                        task_artifact_event=TaskArtifactUpdateEvent(
+                            artifact=Artifact(
+                                artifact_id=result.message_id,
+                                role=result.role,
+                                parts=result.parts,
+                                metadata=result.metadata,
+                                reference_task_ids=result.reference_task_ids,
+                                extensions=result.extensions,
+                            ),
+                            context_id=result.message_id,
+                            metadata=result.metadata,
+                            task_id=result.message_id,
+                        ),
+                        content=result.model_dump_json(),
+                    )
+        except Exception as e:
+            yield ErrorObservation(f'Error sending task: {e}')
+            return
 
     # ====================================================================
     # File operations

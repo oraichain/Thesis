@@ -81,6 +81,7 @@ from openhands.events.observation import (
     ReportVerificationObservation,
 )
 from openhands.events.observation.a2a import (
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskUpdateObservation,
 )
@@ -428,6 +429,8 @@ class AgentController:
             ):
                 return TaskEventHandler.should_step_on_task_update(event)
             if isinstance(event, A2ASendTaskArtifactObservation):
+                return False
+            if isinstance(event, A2ASendMessageResponseObservation):
                 return False
             if isinstance(event, ReportVerificationObservation):
                 return False

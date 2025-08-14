@@ -21,7 +21,6 @@ from openhands.events.action import (
     MessageAction,
 )
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.action.agent import KnowledgeBaseAction
@@ -46,7 +45,7 @@ from openhands.events.observation import (
     UserRejectObservation,
 )
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskUpdateObservation,
 )
@@ -251,7 +250,6 @@ class ConversationMemory:
                 - AgentFinishAction: For ending the interaction
                 - MessageAction: For sending messages
                 - McpAction: For interacting with the MCP server
-                - A2AListRemoteAgentsAction: For listing remote agents
                 - A2ASendTaskAction: For sending a task to a remote agent
             pending_tool_call_action_messages: Dictionary mapping response IDs to their corresponding messages.
                 Used in function calling mode to track tool calls that are waiting for their results.
@@ -279,7 +277,6 @@ class ConversationMemory:
                 BrowseInteractiveAction,
                 BrowseURLAction,
                 McpAction,
-                A2AListRemoteAgentsAction,
                 A2ASendTaskAction,
             ),
         ) or (isinstance(action, CmdRunAction) and action.source == 'agent'):
@@ -310,9 +307,11 @@ class ConversationMemory:
             pending_tool_call_action_messages[llm_response.id] = Message(
                 role=getattr(assistant_msg, 'role', 'assistant'),
                 # tool call content SHOULD BE a string
-                content=[TextContent(text=assistant_msg.content)]
-                if assistant_msg.content and assistant_msg.content.strip()
-                else [],
+                content=(
+                    [TextContent(text=assistant_msg.content)]
+                    if assistant_msg.content and assistant_msg.content.strip()
+                    else []
+                ),
                 tool_calls=assistant_msg.tool_calls,
             )
             return []
@@ -497,10 +496,12 @@ class ConversationMemory:
                             image_urls=[
                                 # show set of marks if it exists
                                 # otherwise, show raw screenshot when using vision-supported model
-                                obs.set_of_marks
-                                if obs.set_of_marks is not None
-                                and len(obs.set_of_marks) > 0
-                                else obs.screenshot
+                                (
+                                    obs.set_of_marks
+                                    if obs.set_of_marks is not None
+                                    and len(obs.set_of_marks) > 0
+                                    else obs.screenshot
+                                )
                             ]
                         ),
                     ],
@@ -650,9 +651,6 @@ class ConversationMemory:
             # If prompt extensions are disabled, we don't add any additional info
             # TODO: test this
             return []
-        elif isinstance(obs, A2AListRemoteAgentsObservation):
-            text = truncate_content(obs.content, max_message_chars)
-            message = Message(role='user', content=[TextContent(text=text)])
         elif isinstance(obs, A2ASendTaskUpdateObservation):
             task_update_content = TaskEventHandler.handle_observation(obs)
             if not task_update_content:
@@ -666,6 +664,8 @@ class ConversationMemory:
         elif isinstance(obs, A2ASendTaskArtifactObservation):
             text = self.prompt_manager.build_a2a_info(obs)
             message = Message(role='user', content=[TextContent(text=text)])
+        elif isinstance(obs, A2ASendMessageResponseObservation):
+            message = Message(role='user', content=[TextContent(text=obs.message)])
         elif isinstance(obs, ReportVerificationObservation):
             return []
         elif isinstance(obs, CreditErrorObservation):

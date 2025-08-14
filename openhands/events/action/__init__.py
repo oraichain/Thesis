@@ -1,5 +1,4 @@
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.action.action import Action, ActionConfirmationStatus
@@ -47,7 +46,6 @@ __all__ = [
     'AgentThinkAction',
     'RecallAction',
     'McpAction',
-    'A2AListRemoteAgentsAction',
     'A2ASendTaskAction',
     'CondensationAction',
     'OrchestratorInitializationAction',

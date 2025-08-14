@@ -1,6 +1,6 @@
 from openhands.events.event import RecallType
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskResponseObservation,
     A2ASendTaskUpdateObservation,
@@ -62,8 +62,8 @@ __all__ = [
     'MCPObservation',
     'BrowserMCPObservation',
     'PlanObservation',
-    'A2AListRemoteAgentsObservation',
     'A2ASendTaskArtifactObservation',
+    'A2ASendMessageResponseObservation',
     'A2ASendTaskUpdateObservation',
     'A2ASendTaskResponseObservation',
     'ReportVerificationObservation',
