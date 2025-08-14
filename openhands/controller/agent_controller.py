@@ -43,7 +43,6 @@ from openhands.core.logger import LOG_ALL_EVENTS
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message_utils import process_knowledge_base
 from openhands.core.schema import AgentState
-from openhands.core.schema.research import ResearchMode
 from openhands.evaluation import should_step_after_call_evaluation_endpoint
 from openhands.events import (
     EventSource,
@@ -106,7 +105,6 @@ from openhands.server.mem0 import (
     search_knowledge_mem0,
 )
 from openhands.server.thesis_auth import (
-    check_feature_credit,
     search_knowledge,
     webhook_rag_conversation,
 )
@@ -429,6 +427,7 @@ class AgentController:
             ):
                 return TaskEventHandler.should_step_on_task_update(event)
             if isinstance(event, A2ASendTaskArtifactObservation):
+                print('event_task_artifact:', event)
                 return False
             if isinstance(event, A2ASendMessageResponseObservation):
                 return False
@@ -674,25 +673,25 @@ class AgentController:
             # set pending_action while we search for information
 
             # if this is the first user message for this agent, matters for the microagent info type
-            if (
-                action.mode == ResearchMode.DEEP_RESEARCH
-                and self.user_id
-                and '/exit' not in action.content
-            ):
-                check_credit = await check_feature_credit(
-                    self.user_id, 'deep_research', run_on_oh=True
-                )
-                logger.debug(f'check_credit: {check_credit}')
-                if check_credit and not check_credit.get('data'):
-                    self.event_stream.add_event(
-                        CreditErrorObservation(
-                            content=check_credit.get(
-                                'msg', 'Feature credit check failed'
-                            )
-                        ),
-                        EventSource.AGENT,
-                    )
-                    return
+            # if (
+            #     action.mode == ResearchMode.DEEP_RESEARCH
+            #     and self.user_id
+            #     and '/exit' not in action.content
+            # ):
+            #     check_credit = await check_feature_credit(
+            #         self.user_id, 'deep_research', run_on_oh=True
+            #     )
+            #     logger.debug(f'check_credit: {check_credit}')
+            #     if check_credit and not check_credit.get('data'):
+            #         self.event_stream.add_event(
+            #             CreditErrorObservation(
+            #                 content=check_credit.get(
+            #                     'msg', 'Feature credit check failed'
+            #                 )
+            #             ),
+            #             EventSource.AGENT,
+            #         )
+            #         return
 
             first_user_message = self._first_user_message()
             is_first_user_message = (

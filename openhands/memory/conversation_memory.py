@@ -663,6 +663,7 @@ class ConversationMemory:
             ]
         elif isinstance(obs, A2ASendTaskArtifactObservation):
             text = self.prompt_manager.build_a2a_info(obs)
+
             message = Message(role='user', content=[TextContent(text=text)])
         elif isinstance(obs, A2ASendMessageResponseObservation):
             message = Message(role='user', content=[TextContent(text=obs.message)])

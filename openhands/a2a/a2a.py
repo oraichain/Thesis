@@ -5,9 +5,9 @@ from uuid import uuid4
 from a2a.client import A2ACardResolver, A2AClient
 from a2a.types import AgentCard, JSONRPCErrorResponse, TaskState, TaskStatusUpdateEvent
 
-from containers.runtime.code.openhands.utils.async_utils import call_async_from_sync
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message import TextContent
+from openhands.utils.async_utils import call_async_from_sync
 
 
 class A2AAgent:

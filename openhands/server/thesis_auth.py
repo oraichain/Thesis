@@ -512,6 +512,7 @@ async def check_feature_credit(
                 response = await client.post(url, headers=headers, json=payload)
         else:
             response = await thesis_auth_client.post(url, headers=headers, json=payload)
+
         if response.status_code != 200:
             logger.error(
                 f'Failed to check feature credit: {response.status_code} - {response.text}'
