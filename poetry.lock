@@ -5672,8 +5672,8 @@ utils = ["numpydoc"]
 [package.source]
 type = "git"
 url = "https://github.com/oraichain/litellm.git"
-reference = "925a4733973bb982aeef00abfd72e70de88b7187"
-resolved_reference = "925a4733973bb982aeef00abfd72e70de88b7187"
+reference = "24b6397c1a88b7a4a35da33545d4eeeb9c52e4d8"
+resolved_reference = "24b6397c1a88b7a4a35da33545d4eeeb9c52e4d8"
 
 [[package]]
 name = "lru-dict"
@@ -13607,4 +13607,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "3dbb818a77672d10aabe955ff0712ed6eddb2cb25ba05b45b79272b3d1d016b7"
+content-hash = "6f5a922182c6c2e41215325b35414564939043d00d4d576e632f258081825e3f"
