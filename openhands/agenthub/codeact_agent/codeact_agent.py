@@ -22,6 +22,7 @@ from openhands.events.action import (
     AgentFinishAction,
     StreamingMessageAction,
 )
+from openhands.events.action.init_pyodide import InitPyodideAction
 from openhands.events.action.message import MessageAction
 from openhands.events.event import Event, EventSource
 from openhands.llm.llm import LLM, check_tools
@@ -229,6 +230,7 @@ class CodeActAgent(Agent):
         last_chunk = None
         has_tool_calls = False  # Track if we accumulated any tool calls
         accumulated_content = ''  # Track assistant content
+        masked_pyodide = False
 
         # For streaming "finish" or "think" function message content
         streaming_function_calls: dict[str, Any] = {}  # tool_call_id -> streaming state
@@ -313,6 +315,13 @@ class CodeActAgent(Agent):
                             elif (
                                 function_name == 'pyodide_execute_python_mcp_tool_call'
                             ):
+                                if not masked_pyodide and self.event_stream is not None:
+                                    pyodide_event = InitPyodideAction(content='')
+                                    self.event_stream.add_event(
+                                        pyodide_event, EventSource.AGENT
+                                    )
+                                    masked_pyodide = True
+
                                 started, remainder = self._parse_tool_arguments(
                                     target_id, func_delta.arguments, pattern='"code": "'
                                 )
