@@ -102,5 +102,5 @@ jobs:
         with:
           token: ${{ secrets.DISPATCH_INFRA_DEPLOYMENT_TOKEN }}
           repository: oraichain/infra-deployments
-          event-type: image-tag
-          client-payload: '{"chart_name": "thesis-be", "tag": "${{ env.SHORT_SHA }}", "target": "prod-aws", "env": "prod", "event-type": "image-tag-prod", "cluster_name": "prod-thesis"}'
+          event-type: image-tag-prod
+          client-payload: '{"chart_name": "thesis-be", "tag": "${{ env.SHORT_SHA }}", "target": "prod-aws", "env": "prod", "cluster_name": "prod-thesis"}'
