@@ -36,7 +36,7 @@ from openhands.storage.memory import InMemoryFileStore
 def patch_db_pool_instance():
     with patch('openhands.server.mem0._db_pool_instance', MagicMock()), patch(
         'openhands.core.database.db_pool', MagicMock()
-    ):
+    ), patch('openhands.shared.config.file_store', 'memory'):
         yield
 
 
@@ -1088,7 +1088,7 @@ async def test_run_controller_with_memory_error(test_event_stream):
             memory=memory,
         )
 
-    assert state.iteration == 0
+    assert state.iteration == 0  # Memory error prevents agent step execution
     assert state.agent_state == AgentState.ERROR
     assert state.last_error == 'Error: RuntimeError'
 
