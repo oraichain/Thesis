@@ -669,7 +669,9 @@ class CodeActAgent(Agent):
             return actions
 
         if self.pending_actions:
-            return self.pending_actions.popleft()
+            actions = list(self.pending_actions.copy())
+            self.pending_actions.clear()
+            return actions
 
         # if we're done, go back
         latest_user_message = state.get_last_user_message()
@@ -793,10 +795,16 @@ class CodeActAgent(Agent):
                 research_mode,
             )
             if self.pending_actions:
+                actions = list(self.pending_actions.copy())
                 logger.info(
                     f'Returning first of {len(self.pending_actions)} pending actions from streaming'
                 )
-                return self.pending_actions.popleft()
+                self.pending_actions.clear()
+                return actions
+                # logger.info(
+                #     f'Returning first of {len(self.pending_actions)} pending actions from streaming'
+                # )
+                # return self.pending_actions.popleft()
         else:
             actions = codeact_function_calling.response_to_actions(
                 response,
@@ -805,9 +813,10 @@ class CodeActAgent(Agent):
                 tools=params['tools'],
             )
             logger.debug(f'Actions after response_to_actions: {actions}')
-            for action in actions:
-                self.pending_actions.append(action)
-            return self.pending_actions.popleft()
+            return actions
+            # for action in actions:
+            #     self.pending_actions.append(action)
+            # return self.pending_actions.popleft()
         return None
 
     def _get_messages(
