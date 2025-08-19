@@ -561,5 +561,59 @@ class ConversationModule:
             logger.error(f'Error in update_empty_conversation_titles: {str(e)}')
             return {'updated': 0, 'error': str(e)}
 
+    async def _get_conversations_by_space_id(
+        self,
+        space_id: str,
+        without_section: bool = False,
+        limit: int = 10,
+        offset: int = 0,
+    ):
+        """Get conversations by space_id with optional filtering and pagination.
+
+        Args:
+            space_id: The space ID to filter by
+            without_section: If True, exclude conversations with space_section_id in configs
+            limit: Maximum number of conversations to return
+            offset: Number of conversations to skip
+
+        Returns:
+            dict: Contains 'total', 'items', 'limit', 'offset'
+        """
+        try:
+            # Base filter for space_id and not deleted
+            base_filter = and_(
+                or_(
+                    Conversation.c.status != 'deleted', Conversation.c.status.is_(None)
+                ),
+                Conversation.c.configs.op('->>')('space_id') == space_id,
+            )
+
+            # Add filter to exclude conversations with space_section_id if without_section is True
+            if without_section:
+                base_filter = and_(
+                    base_filter,
+                    not_(Conversation.c.configs.op('?')('space_section_id')),
+                )
+
+            # Main query for conversations
+            query = (
+                Conversation.select()
+                .where(base_filter)
+                .order_by(desc(Conversation.c.created_at))
+                .offset(offset)
+                .limit(limit)
+            )
+
+            items = await database.fetch_all(query)
+            return {
+                'items': [dict(item) for item in items],
+                'limit': limit,
+                'offset': offset,
+            }
+
+        except Exception as e:
+            logger.error(f'Error getting conversations by space_id: {str(e)}')
+            return {'total': 0, 'items': [], 'limit': limit, 'offset': offset}
+
 
 conversation_module = ConversationModule()

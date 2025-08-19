@@ -428,6 +428,31 @@ async def select_file(
             await shared.conversation_manager.detach_from_conversation(session)
 
 
+@app.get('/conversations/space/{space_id}')
+async def get_conversations_by_space(
+    space_id: str,
+    without_section: bool = False,
+    limit: int = 10,
+    offset: int = 0,
+    x_key_oh: str = Depends(verify_thesis_backend_server),
+) -> dict[str, Any]:
+    if not space_id:
+        raise HTTPException(status_code=400, detail='Space ID is required')
+    try:
+        result = await conversation_module._get_conversations_by_space_id(
+            space_id=space_id,
+            without_section=without_section,
+            limit=limit,
+            offset=offset,
+        )
+        return result
+    except Exception as e:
+        logger.error(f'Error fetching conversations for space {space_id}: {str(e)}')
+        raise HTTPException(
+            status_code=500, detail=f'Error fetching conversations: {str(e)}'
+        )
+
+
 @app.put('/update-empty-titles')
 async def update_empty_titles(
     x_key_oh: str = Depends(verify_thesis_backend_server),
