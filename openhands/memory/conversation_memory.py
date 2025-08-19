@@ -2,6 +2,7 @@ from typing import Generator
 
 from litellm import ModelResponse
 
+from openhands.a2a.task_event_handler import TaskEventHandler
 from openhands.core.config.agent_config import AgentConfig
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message import ImageContent, Message, TextContent
@@ -20,7 +21,6 @@ from openhands.events.action import (
     MessageAction,
 )
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.action.agent import KnowledgeBaseAction
@@ -32,26 +32,28 @@ from openhands.events.observation import (
     AgentThinkObservation,
     BrowserOutputObservation,
     CmdOutputObservation,
+    ErrorObservation,
     FileEditObservation,
     FileReadObservation,
     IPythonRunCellObservation,
+    Observation,
+    OrchestratorFinalObservation,
+    OrchestratorInitializeObservation,
     PlanObservation,
+    RecallObservation,
     ReportVerificationObservation,
     UserRejectObservation,
 )
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskUpdateObservation,
 )
 from openhands.events.observation.agent import (
     MicroagentKnowledge,
-    RecallObservation,
 )
 from openhands.events.observation.credit import CreditErrorObservation
-from openhands.events.observation.error import ErrorObservation
 from openhands.events.observation.mcp import MCPObservation
-from openhands.events.observation.observation import Observation
 from openhands.events.observation.playwright_mcp import (
     BrowserMCPObservation,
 )
@@ -248,6 +250,7 @@ class ConversationMemory:
                 - AgentFinishAction: For ending the interaction
                 - MessageAction: For sending messages
                 - McpAction: For interacting with the MCP server
+                - A2ASendTaskAction: For sending a task to a remote agent
             pending_tool_call_action_messages: Dictionary mapping response IDs to their corresponding messages.
                 Used in function calling mode to track tool calls that are waiting for their results.
 
@@ -274,11 +277,20 @@ class ConversationMemory:
                 BrowseInteractiveAction,
                 BrowseURLAction,
                 McpAction,
-                A2AListRemoteAgentsAction,
                 A2ASendTaskAction,
             ),
         ) or (isinstance(action, CmdRunAction) and action.source == 'agent'):
             tool_metadata = action.tool_call_metadata
+            if tool_metadata is None and isinstance(action, A2ASendTaskAction):
+                logger.info(
+                    f'A2ASendTaskAction tool_metadata is None task_message: {action.task_message}'
+                )
+                return [
+                    Message(
+                        role='assistant',
+                        content=[TextContent(text=action.task_message)],
+                    )
+                ]
             assert tool_metadata is not None, (
                 'Tool call metadata should NOT be None when function calling is enabled. Action: '
                 + str(action)
@@ -295,9 +307,11 @@ class ConversationMemory:
             pending_tool_call_action_messages[llm_response.id] = Message(
                 role=getattr(assistant_msg, 'role', 'assistant'),
                 # tool call content SHOULD BE a string
-                content=[TextContent(text=assistant_msg.content)]
-                if assistant_msg.content and assistant_msg.content.strip()
-                else [],
+                content=(
+                    [TextContent(text=assistant_msg.content)]
+                    if assistant_msg.content and assistant_msg.content.strip()
+                    else []
+                ),
                 tool_calls=assistant_msg.tool_calls,
             )
             return []
@@ -482,10 +496,12 @@ class ConversationMemory:
                             image_urls=[
                                 # show set of marks if it exists
                                 # otherwise, show raw screenshot when using vision-supported model
-                                obs.set_of_marks
-                                if obs.set_of_marks is not None
-                                and len(obs.set_of_marks) > 0
-                                else obs.screenshot
+                                (
+                                    obs.set_of_marks
+                                    if obs.set_of_marks is not None
+                                    and len(obs.set_of_marks) > 0
+                                    else obs.screenshot
+                                )
                             ]
                         ),
                     ],
@@ -635,18 +651,33 @@ class ConversationMemory:
             # If prompt extensions are disabled, we don't add any additional info
             # TODO: test this
             return []
-        elif isinstance(obs, A2AListRemoteAgentsObservation):
-            text = truncate_content(obs.content, max_message_chars)
-            message = Message(role='user', content=[TextContent(text=text)])
         elif isinstance(obs, A2ASendTaskUpdateObservation):
-            return []
+            task_update_content = TaskEventHandler.handle_observation(obs)
+            if not task_update_content:
+                return []
+            return [
+                Message(
+                    role='user',
+                    content=task_update_content,
+                )
+            ]
         elif isinstance(obs, A2ASendTaskArtifactObservation):
             text = self.prompt_manager.build_a2a_info(obs)
+
             message = Message(role='user', content=[TextContent(text=text)])
+        elif isinstance(obs, A2ASendMessageResponseObservation):
+            message = Message(role='user', content=[TextContent(text=obs.message)])
         elif isinstance(obs, ReportVerificationObservation):
             return []
         elif isinstance(obs, CreditErrorObservation):
             return []
+        elif isinstance(obs, OrchestratorInitializeObservation):
+            # The full ledger contains the task, facts, plan and team info in a formatted way
+            text = truncate_content(obs.full_ledger, max_message_chars)
+            message = Message(role='user', content=[TextContent(text=text)])
+        elif isinstance(obs, OrchestratorFinalObservation):
+            text = truncate_content(obs.content, max_message_chars)
+            message = Message(role='user', content=[TextContent(text=text)])
         else:
             # If an observation message is not returned, it will cause an error
             # when the LLM tries to return the next message

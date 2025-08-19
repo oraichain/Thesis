@@ -14,13 +14,16 @@ from typing import AsyncGenerator, Callable, cast
 from zipfile import ZipFile
 
 import httpx
-
-from openhands.a2a.A2AManager import A2AManager
-from openhands.a2a.common.types import (
+from a2a.types import (
+    Artifact,
+    JSONRPCErrorResponse,
+    Message,
     Task,
     TaskArtifactUpdateEvent,
     TaskStatusUpdateEvent,
 )
+
+from openhands.a2a.A2AManager import A2AManager
 from openhands.core.config import AppConfig, SandboxConfig
 from openhands.core.exceptions import AgentRuntimeDisconnectedError
 from openhands.core.logger import openhands_logger as logger
@@ -35,12 +38,13 @@ from openhands.events.action import (
     FileReadAction,
     FileWriteAction,
     IPythonRunCellAction,
+    OrchestratorFinalAnswerAction,
 )
 from openhands.events.action.a2a_action import (
-    A2AListRemoteAgentsAction,
     A2ASendTaskAction,
 )
 from openhands.events.action.mcp import McpAction
+from openhands.events.action.orchestrator import OrchestratorInitializationAction
 from openhands.events.event import Event
 from openhands.events.observation import (
     AgentThinkObservation,
@@ -52,10 +56,13 @@ from openhands.events.observation import (
     UserRejectObservation,
 )
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskResponseObservation,
     A2ASendTaskUpdateObservation,
+)
+from openhands.events.observation.orchestrator import (
+    OrchestratorFinalObservation,
+    OrchestratorInitializeObservation,
 )
 from openhands.events.serialization.action import ACTION_TYPE_TO_CLASS
 from openhands.integrations.provider import (
@@ -306,17 +313,38 @@ class Runtime(FileEditRuntimeMixin):
         assert event.timeout is not None
         try:
             await self._export_latest_git_provider_tokens(event)
-            if isinstance(event, McpAction):
+            observation: Observation = NullObservation('')
+            # Handle OrchestratorInitializationAction specially
+            if isinstance(event, OrchestratorInitializationAction):
+                # Create and add the observation
+                observation = OrchestratorInitializeObservation(
+                    task=event.task,
+                    facts=event.facts,
+                    plan=event.plan,
+                    team=event.team,
+                    full_ledger=event.full_ledger,
+                    content=event.full_ledger,
+                )
+                self.event_stream.add_event(observation, EventSource.AGENT)
+                return
+            elif isinstance(event, OrchestratorFinalAnswerAction):
+                # Create and add the final observation
+                observation = OrchestratorFinalObservation(
+                    task=event.task,
+                    content=event.reason or 'OrchestratorFinalObservation empty',
+                )
+                self.event_stream.add_event(observation, EventSource.AGENT)
+                return
+            elif isinstance(event, McpAction):
                 # we don't call call_tool_mcp impl directly because there can be other action ActionExecutionClient
                 logger.debug(f'Calling call_tool_mcp with event: {event}')
-                observation: Observation = await getattr(self, McpAction.action)(event)
-            elif isinstance(event, A2AListRemoteAgentsAction) or isinstance(
-                event, A2ASendTaskAction
-            ):
+                observation = await getattr(self, McpAction.action)(event)
+            elif isinstance(event, A2ASendTaskAction):
                 async for observation in self.call_a2a(event):
                     if observation is not None:
                         observation._cause = event.id  # type: ignore[attr-defined]
-                        observation.tool_call_metadata = event.tool_call_metadata
+                        if event.tool_call_metadata is not None:
+                            observation.tool_call_metadata = event.tool_call_metadata
                         self.event_stream.add_event(observation, EventSource.AGENT)
                 return
             else:
@@ -334,7 +362,8 @@ class Runtime(FileEditRuntimeMixin):
             return
 
         observation._cause = event.id  # type: ignore[attr-defined]
-        observation.tool_call_metadata = event.tool_call_metadata
+        if event.tool_call_metadata is not None:
+            observation.tool_call_metadata = event.tool_call_metadata
 
         # this might be unnecessary, since source should be set by the event stream when we're here
         source = event.source if event.source else EventSource.AGENT
@@ -591,48 +620,71 @@ class Runtime(FileEditRuntimeMixin):
         pass
 
     async def call_a2a(
-        self, action: A2AListRemoteAgentsAction | A2ASendTaskAction
+        self, action: A2ASendTaskAction
     ) -> AsyncGenerator[Observation, None]:
         if self.a2a_manager is None:
             yield ErrorObservation('A2A manager is not set')
             return
 
-        if isinstance(action, A2AListRemoteAgentsAction):
-            list_agent = self.a2a_manager.list_remote_agents()
-            yield A2AListRemoteAgentsObservation(content=json.dumps(list_agent))
-        elif isinstance(action, A2ASendTaskAction):
-            logger.info(
-                f'Sending task to {action.agent_name} message: {action.task_message}'
-            )
-            try:
-                async for task_response in self.a2a_manager.send_task(
-                    action.agent_name, action.task_message, self.sid
+        try:
+            async for task_response in self.a2a_manager.send_message(
+                action.agent_name, action.task_message, self.sid
+            ):
+                if (
+                    task_response is None
+                    or task_response.root is None
+                    or isinstance(task_response.root, JSONRPCErrorResponse)
                 ):
-                    if task_response is None or task_response.result is None:
-                        continue
-                    result = task_response.result
+                    continue
+                result = task_response.root.result
 
-                    if isinstance(result, TaskStatusUpdateEvent):
-                        yield A2ASendTaskUpdateObservation(
-                            agent_name=action.agent_name,
-                            task_update_event=result,
-                            content=result.model_dump_json(),
-                        )
-                    elif isinstance(result, TaskArtifactUpdateEvent):
-                        yield A2ASendTaskArtifactObservation(
-                            agent_name=action.agent_name,
-                            task_artifact_event=result,
-                            content=result.model_dump_json(),
-                        )
-                    elif isinstance(result, Task):
-                        yield A2ASendTaskResponseObservation(
-                            agent_name=action.agent_name,
-                            task=result,
-                            content=result.model_dump_json(),
-                        )
-            except Exception as e:
-                yield ErrorObservation(f'Error sending task: {e}')
-                return
+                if isinstance(result, TaskStatusUpdateEvent):
+                    logger.debug(
+                        f"""
+                        Agent Name: {action.agent_name}
+                        Task Update Event: {result}
+                        Task Content: {result.model_dump_json()}
+                        """
+                    )
+                    yield A2ASendTaskUpdateObservation(
+                        agent_name=action.agent_name,
+                        task_update_event=result,
+                        content=result.model_dump_json(),
+                    )
+                elif isinstance(result, TaskArtifactUpdateEvent):
+                    yield A2ASendTaskArtifactObservation(
+                        agent_name=action.agent_name,
+                        task_artifact_event=result,
+                        content=result.model_dump_json(),
+                    )
+                elif isinstance(result, Task):
+                    yield A2ASendTaskResponseObservation(
+                        agent_name=action.agent_name,
+                        task=result,
+                        content=result.model_dump_json(),
+                    )
+                # FIXME: Create a seperate message class instead of using task artifact observation
+                elif isinstance(result, Message):
+                    yield A2ASendTaskArtifactObservation(
+                        agent_name=action.agent_name,
+                        task_artifact_event=TaskArtifactUpdateEvent(
+                            artifact=Artifact(
+                                artifact_id=result.message_id,
+                                role=result.role,
+                                parts=result.parts,
+                                metadata=result.metadata,
+                                reference_task_ids=result.reference_task_ids,
+                                extensions=result.extensions,
+                            ),
+                            context_id=result.message_id,
+                            metadata=result.metadata,
+                            task_id=result.message_id,
+                        ),
+                        content=result.model_dump_json(),
+                    )
+        except Exception as e:
+            yield ErrorObservation(f'Error sending task: {e}')
+            return
 
     # ====================================================================
     # File operations

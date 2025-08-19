@@ -18,6 +18,7 @@ from openhands.runtime.plugins import PluginRequirement
 
 if TYPE_CHECKING:
     from openhands.utils.prompt import PromptManager
+from openhands.events.stream import EventStream
 
 
 class Agent(ABC):
@@ -40,8 +41,6 @@ class Agent(ABC):
         a2a_manager: A2AManager | None = None,
         **kwargs,
     ):
-        from openhands.events.stream import EventStream
-
         self.llm = llm
         self.config = config
         self._complete = False

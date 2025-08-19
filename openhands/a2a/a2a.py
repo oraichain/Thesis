@@ -2,9 +2,12 @@
 import asyncio
 from uuid import uuid4
 
-from openhands.a2a.client import A2ACardResolver, A2AClient
-from openhands.a2a.common.types import TaskState, TaskStatusUpdateEvent
+from a2a.client import A2ACardResolver, A2AClient
+from a2a.types import AgentCard, JSONRPCErrorResponse, TaskState, TaskStatusUpdateEvent
+
+from openhands.core.logger import openhands_logger as logger
 from openhands.core.message import TextContent
+from openhands.utils.async_utils import call_async_from_sync
 
 
 class A2AAgent:
@@ -13,10 +16,7 @@ class A2AAgent:
         self.history = history
 
         self.card_resolver = A2ACardResolver(a2a_server_url)
-        self.card = self.card_resolver.get_agent_card()
-
-        print('======= Agent Card ========')
-        print(self.card.model_dump_json(exclude_none=True))
+        self.card: AgentCard = call_async_from_sync(self.card_resolver.get_agent_card())
 
         self.client = A2AClient(agent_card=self.card)
         if session:
@@ -61,21 +61,24 @@ class A2AAgent:
 
         taskResult = None
         if streaming:
-            response_stream = self.client.send_task_streaming(payload)
+            response_stream = self.client.send_message_streaming(payload)
             async for result in response_stream:
                 print(f'stream event => {result.model_dump_json(exclude_none=True)}')
                 if (
-                    result.result
-                    and isinstance(result.result, TaskStatusUpdateEvent)
-                    and result.result.final
+                    result.root
+                    and isinstance(result.root.result, TaskStatusUpdateEvent)
+                    and result.root.result.final
                 ):
                     return False
         else:
-            taskResult = await self.client.send_task(payload)
+            taskResult = await self.client.send_message(payload)
             print(f'\ntask result => {taskResult.model_dump_json(exclude_none=True)}')
             ## if the result is that more input is required, loop again.
-            state = TaskState(taskResult.result.status.state)
-            if state.name == TaskState.INPUT_REQUIRED.name:
+            if isinstance(taskResult.root, JSONRPCErrorResponse):
+                logger.error(f'Error sending message to agent A2A: {taskResult.root}')
+                return False
+            state = TaskState(taskResult.root.result.status.state)
+            if state.name == TaskState.input_required.name:
                 return await self.completeTask(streaming, taskId, sessionId)
             else:
                 ## task is complete

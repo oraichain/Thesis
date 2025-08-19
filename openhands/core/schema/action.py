@@ -10,6 +10,8 @@ class ActionType(str, Enum):
     """Represents a streaming message chunk for UI display only.
     """
 
+    ORCHESTRATOR_INITIALIZATION = 'orchestrator_initialization'  # Indicates the orchestrator agent has completed initialization
+
     START = 'start'
     """Starts a new development task OR send chat from the user. Only sent by the client.
     """
@@ -100,3 +102,14 @@ class ActionType(str, Enum):
 
     KNOWLEDGE_BASE = 'knowledge_base'
     """Retrieves content from a knowledge base."""
+    GATHERING_FACTS = 'gathering_facts'
+    """Indicates the orchestrator agent is gathering facts about the task."""
+
+    CREATING_PLAN = 'creating_plan'
+    """Indicates the orchestrator agent is creating a plan for the task."""
+
+    UPDATING_KNOWLEDGE = 'updating_knowledge'
+    """Indicates the orchestrator agent is updating its knowledge (facts and plan)."""
+
+    ORCHESTRATOR_FINAL_ANSWER = 'orchestrator_final_answer'
+    """Indicates the orchestrator agent has completed the task and is providing the final answer."""

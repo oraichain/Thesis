@@ -1,6 +1,6 @@
 from openhands.events.event import RecallType
 from openhands.events.observation.a2a import (
-    A2AListRemoteAgentsObservation,
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskResponseObservation,
     A2ASendTaskUpdateObservation,
@@ -29,8 +29,14 @@ from openhands.events.observation.files import (
     FileReadObservation,
     FileWriteObservation,
 )
+from openhands.events.observation.mcp import MCPObservation
 from openhands.events.observation.observation import Observation
+from openhands.events.observation.orchestrator import (
+    OrchestratorFinalObservation,
+    OrchestratorInitializeObservation,
+)
 from openhands.events.observation.planner_mcp import PlanObservation
+from openhands.events.observation.playwright_mcp import BrowserMCPObservation
 from openhands.events.observation.reject import UserRejectObservation
 from openhands.events.observation.success import SuccessObservation
 
@@ -56,10 +62,12 @@ __all__ = [
     'MCPObservation',
     'BrowserMCPObservation',
     'PlanObservation',
-    'A2AListRemoteAgentsObservation',
     'A2ASendTaskArtifactObservation',
+    'A2ASendMessageResponseObservation',
     'A2ASendTaskUpdateObservation',
     'A2ASendTaskResponseObservation',
     'ReportVerificationObservation',
     'CreditErrorObservation',
+    'OrchestratorInitializeObservation',
+    'OrchestratorFinalObservation',
 ]

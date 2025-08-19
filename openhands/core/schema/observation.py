@@ -74,7 +74,15 @@ class ObservationType(str, Enum):
     A2A_SEND_TASK_RESPONSE = 'a2a_send_task_response'
     """Result of a A2A Send Task Response operation. The response is a list of remote agents."""
 
+    A2A_SEND_MESSAGE_RESPONSE = 'a2a_send_message_response'
+    """Result of a A2A Send Message Response operation. The response is a list of remote agents."""
+
     REPORT_VERIFICATION = 'report_verification'
     """Result of the evaluation pipeline verifying the generated report. The response is a boolean."""
     CREDIT_ERROR = 'credit_error'
     """Result of a credit check."""
+    ORCHESTRATOR_INITIALIZE_OBSERVATION = 'orchestrator_initialize_observation'
+    """Result of an orchestrator initialization, containing the full ledger and context."""
+
+    ORCHESTRATOR_FINAL_OBSERVATION = 'orchestrator_final_observation'
+    """Result of an orchestrator final answer, containing the completed task's final answer."""

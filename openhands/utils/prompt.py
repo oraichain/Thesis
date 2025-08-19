@@ -3,9 +3,9 @@ import re
 from dataclasses import dataclass, field
 from itertools import islice
 
+from a2a.types import Artifact
 from jinja2 import Template
 
-from openhands.a2a.common.types import Artifact
 from openhands.a2a.utils import convert_parts
 from openhands.controller.state.state import State
 from openhands.core.message import Message, TextContent

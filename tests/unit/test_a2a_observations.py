@@ -2,9 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 import pytest
-from pydantic import BaseModel
-
-from openhands.a2a.common.types import (
+from a2a.types import (
     Artifact,
     Message,
     Task,
@@ -14,6 +12,8 @@ from openhands.a2a.common.types import (
     TaskStatusUpdateEvent,
     TextPart,
 )
+from pydantic import BaseModel
+
 from openhands.core.schema import ObservationType
 from openhands.events.observation.a2a import (
     A2ASendTaskArtifactObservation,
@@ -95,7 +95,7 @@ def test_a2a_send_task_update_observation():
     message = Message(role='agent', parts=[text_part], metadata={'confidence': 0.9})
 
     task_status = TaskStatus(
-        state=TaskState.WORKING,  # Use the enum value
+        state=TaskState.working,  # Use the enum value
         message=message,
     )
 
@@ -188,7 +188,7 @@ def test_a2a_send_task_response_observation():
 
     message = Message(role='agent', parts=[text_part1, text_part2], metadata={})
 
-    task_status = TaskStatus(state=TaskState.COMPLETED, message=message)
+    task_status = TaskStatus(state=TaskState.completed, message=message)
 
     task = Task(
         id='task123',

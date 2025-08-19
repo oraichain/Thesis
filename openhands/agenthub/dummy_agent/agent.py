@@ -6,12 +6,6 @@ from openhands.events.action import (
 )
 from openhands.llm.llm import LLM
 
-# from autogen_agentchat.agents import AssistantAgent
-# from autogen_agentchat.teams import MagenticOneGroupChat
-# from autogen_ext.models.anthropic import AnthropicChatCompletionClient
-# from autogen_ext.tools.mcp import SseServerParams, mcp_server_tools
-# from autogen_agentchat.agents import AssistantAgent
-
 """
 FIXME: There are a few problems this surfaced
 * FileWrites seem to add an unintended newline at the end of the file

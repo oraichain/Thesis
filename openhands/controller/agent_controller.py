@@ -7,6 +7,7 @@ import uuid
 from typing import Any, Callable, ClassVar, Optional, Type
 
 import litellm  # noqa
+from a2a.types import TaskState, TaskStatusUpdateEvent
 from litellm.exceptions import (  # noqa
     APIConnectionError,
     APIError,
@@ -23,6 +24,7 @@ from litellm.exceptions import (  # noqa
 )
 
 from openhands.a2a.A2AManager import A2AManager
+from openhands.a2a.task_event_handler import TaskEventHandler
 from openhands.controller.agent import Agent
 from openhands.controller.replay import ReplayManager
 from openhands.controller.state.state import State, TrafficControlState
@@ -41,7 +43,6 @@ from openhands.core.logger import LOG_ALL_EVENTS
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message_utils import process_knowledge_base
 from openhands.core.schema import AgentState
-from openhands.core.schema.research import ResearchMode
 from openhands.evaluation import should_step_after_call_evaluation_endpoint
 from openhands.events import (
     EventSource,
@@ -79,6 +80,7 @@ from openhands.events.observation import (
     ReportVerificationObservation,
 )
 from openhands.events.observation.a2a import (
+    A2ASendMessageResponseObservation,
     A2ASendTaskArtifactObservation,
     A2ASendTaskUpdateObservation,
 )
@@ -103,7 +105,6 @@ from openhands.server.mem0 import (
     search_knowledge_mem0,
 )
 from openhands.server.thesis_auth import (
-    check_feature_credit,
     search_knowledge,
     webhook_rag_conversation,
 )
@@ -424,8 +425,11 @@ class AgentController:
                 isinstance(event, A2ASendTaskUpdateObservation)
                 and not event.task_update_event['final']
             ):
-                return False
+                return TaskEventHandler.should_step_on_task_update(event)
             if isinstance(event, A2ASendTaskArtifactObservation):
+                print('event_task_artifact:', event)
+                return False
+            if isinstance(event, A2ASendMessageResponseObservation):
                 return False
             if isinstance(event, ReportVerificationObservation):
                 return False
@@ -565,6 +569,10 @@ class AgentController:
             if len(self._concurrent_pending_actions) == 0:
                 self._pending_action = None
             return
+        if isinstance(observation, A2ASendTaskUpdateObservation):
+            task_update_event = TaskStatusUpdateEvent(**observation.task_update_event)
+            if task_update_event.status.state == TaskState.input_required:
+                await self.set_agent_state_to(AgentState.AWAITING_USER_INPUT)
         elif isinstance(observation, ErrorObservation):
             if self.state.agent_state == AgentState.ERROR:
                 self.state.metrics.merge(self.state.local_metrics)
@@ -665,25 +673,25 @@ class AgentController:
             # set pending_action while we search for information
 
             # if this is the first user message for this agent, matters for the microagent info type
-            if (
-                action.mode == ResearchMode.DEEP_RESEARCH
-                and self.user_id
-                and '/exit' not in action.content
-            ):
-                check_credit = await check_feature_credit(
-                    self.user_id, 'deep_research', run_on_oh=True
-                )
-                logger.debug(f'check_credit: {check_credit}')
-                if check_credit and not check_credit.get('data'):
-                    self.event_stream.add_event(
-                        CreditErrorObservation(
-                            content=check_credit.get(
-                                'msg', 'Feature credit check failed'
-                            )
-                        ),
-                        EventSource.AGENT,
-                    )
-                    return
+            # if (
+            #     action.mode == ResearchMode.DEEP_RESEARCH
+            #     and self.user_id
+            #     and '/exit' not in action.content
+            # ):
+            #     check_credit = await check_feature_credit(
+            #         self.user_id, 'deep_research', run_on_oh=True
+            #     )
+            #     logger.debug(f'check_credit: {check_credit}')
+            #     if check_credit and not check_credit.get('data'):
+            #         self.event_stream.add_event(
+            #             CreditErrorObservation(
+            #                 content=check_credit.get(
+            #                     'msg', 'Feature credit check failed'
+            #                 )
+            #             ),
+            #             EventSource.AGENT,
+            #         )
+            #         return
 
             first_user_message = self._first_user_message()
             is_first_user_message = (

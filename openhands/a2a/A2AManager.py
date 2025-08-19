@@ -1,21 +1,26 @@
 import asyncio
+import json
+import os
 import uuid
 from abc import ABC
 from typing import AsyncGenerator, List
 
-from openhands.a2a.client.card_resolver import A2ACardResolver
-from openhands.a2a.client.client import A2AClient
-from openhands.a2a.common.types import (
-    A2AClientHTTPError,
-    A2AClientJSONError,
+import httpx
+from a2a.client import A2ACardResolver, A2AClient
+from a2a.client.errors import A2AClientHTTPError, A2AClientJSONError
+from a2a.types import (
     AgentCard,
     Message,
-    SendTaskResponse,
-    SendTaskStreamingResponse,
-    TaskSendParams,
+    MessageSendParams,
+    SendMessageRequest,
+    SendMessageResponse,
+    SendStreamingMessageResponse,
     TextPart,
 )
+
 from openhands.core.logger import openhands_logger as logger
+
+A2A_REQUEST_DEFAULT_TIMEOUT = float(os.getenv('A2A_REQUEST_DEFAULT_TIMEOUT') or 120.0)
 
 
 class A2AManager(ABC):
@@ -34,7 +39,8 @@ class A2AManager(ABC):
             return
 
         async def fetch_card(server_url: str) -> AgentCard | None:
-            async with A2ACardResolver(server_url) as resolver:
+            async with httpx.AsyncClient() as httpx_client:
+                resolver = A2ACardResolver(httpx_client, server_url)
                 try:
                     return await resolver.get_agent_card()
                 except (A2AClientHTTPError, A2AClientJSONError) as e:
@@ -58,13 +64,26 @@ class A2AManager(ABC):
         remote_agent_info = []
         for card in self.list_remote_agent_cards.values():
             remote_agent_info.append(
-                {'name': card.name, 'description': card.description}
+                {
+                    'agent_name': card.name,
+                    'agent_description': card.description,
+                    'agent_skills': json.dumps(
+                        [
+                            {
+                                'skill_name': skill.name,
+                                'skill_description': skill.description,
+                                'skill_examples': skill.examples,
+                            }
+                            for skill in card.skills
+                        ]
+                    ),
+                }
             )
         return remote_agent_info
 
-    async def send_task(
-        self, agent_name: str, message: str, sid: str
-    ) -> AsyncGenerator[SendTaskStreamingResponse | SendTaskResponse, None]:
+    async def send_message(
+        self, agent_name: str, message: str, sid: str, role: str = 'user'
+    ) -> AsyncGenerator[SendStreamingMessageResponse | SendMessageResponse, None]:
         """Send a task to a remote agent and yield task responses.
 
         Args:
@@ -79,25 +98,35 @@ class A2AManager(ABC):
             raise ValueError(f'Agent {agent_name} not found')
 
         card = self.list_remote_agent_cards[agent_name]
-        client = A2AClient(card)
-        request: TaskSendParams = TaskSendParams(
-            id=str(uuid.uuid4()),
-            sessionId=sid,
-            message=Message(
-                role='user',
-                parts=[TextPart(text=message)],
-                metadata={},
-            ),
-            acceptedOutputModes=['text', 'text/plain', 'image/png'],
-            metadata={'conversation_id': sid},
-        )
+        async with httpx.AsyncClient(
+            timeout=A2A_REQUEST_DEFAULT_TIMEOUT
+        ) as httpx_client:
+            client = A2AClient(httpx_client, card)
+            params: MessageSendParams = MessageSendParams(
+                message=Message(
+                    role=role,
+                    parts=[TextPart(text=message)],
+                    message_id=uuid.uuid4().hex,
+                ),
+                acceptedOutputModes=['text', 'text/plain', 'image/png'],
+                metadata={'conversation_id': sid, 'session_id': sid},
+            )
+            request: SendMessageRequest = SendMessageRequest(
+                id=str(uuid.uuid4()),
+                params=params,
+            )
 
-        if card.capabilities.streaming:
-            async for response in client.send_task_streaming(request):
+            logger.info(f'Sending task to {agent_name} with message: {message}')
+            logger.info(f'Card capabilities: {card.capabilities}')
+            if card.capabilities.streaming:
+                async for response in client.send_message_streaming(request=request):
+                    yield response
+            else:
+                response = await client.send_message(request=request)
                 yield response
-        else:
-            response = await client.send_task(request)
-            yield response
+
+    # async def send_cancel_task(self, task_id: str, sid: str):
+    #     pass
 
     @classmethod
     def from_toml_config(cls, config: dict) -> 'A2AManager':

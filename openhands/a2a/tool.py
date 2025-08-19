@@ -1,31 +1,23 @@
 from litellm import ChatCompletionToolParam, ChatCompletionToolParamFunctionChunk
 
-ListRemoteAgents = ChatCompletionToolParam(
-    type='function',
-    function=ChatCompletionToolParamFunctionChunk(
-        name='a2a_list_remote_agents',
-        description="""List the available remote agents you can use to delegate the task.""",
-        parameters={'type': 'object', 'properties': {}, 'required': []},
-    ),
-)
-
 SendTask = ChatCompletionToolParam(
     type='function',
     function=ChatCompletionToolParamFunctionChunk(
         name='a2a_send_task',
         description="""
-            Send a task to a remote agent and yield task responses.
+            Send a task to an A2A agent and yield task responses. Identify the agent that can help you with the task and send the task to it.
+            Use this tool to send a task to a remote agent and yield task responses.
         """,
         parameters={
             'type': 'object',
             'properties': {
                 'agent_name': {
                     'type': 'string',
-                    'description': 'The name of the remote agent to send the task to.',
+                    'description': "The name of the A2A agent to send the task to. The agent's name should match strictly with the agent's card in the list of available agents in your system prompt.",
                 },
                 'task_message': {
                     'type': 'string',
-                    'description': 'The message to send to the remote agent.',
+                    'description': 'The message to send to the A2A agent.',
                 },
             },
             'required': ['agent_name', 'task_message'],

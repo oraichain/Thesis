@@ -230,7 +230,6 @@ class LLM(RetryMixin, DebugMixin):
 
             messages: list[dict[str, Any]] | dict[str, Any] = []
             mock_function_calling = not self.is_function_calling_active()
-            logger.debug(f'Mock function calling: {mock_function_calling}')
             # Add session_id and user_id as span attributes if they exist
             try:
                 span = trace.get_current_span()
@@ -462,7 +461,23 @@ class LLM(RetryMixin, DebugMixin):
                     },
                 )
 
-            resp_json = response.json()
+            # Check if response is valid before parsing JSON
+            if not response.content or not response.content.strip():
+                logger.warning(
+                    f'Empty response from LiteLLM proxy at {base_url}/v1/model/info'
+                )
+                resp_json = {}
+            else:
+                try:
+                    resp_json = response.json()
+                except Exception as e:
+                    logger.error(
+                        f'Failed to parse JSON response from LiteLLM proxy: {e}'
+                    )
+                    logger.error(
+                        f'Response status: {response.status_code}, content: {response.content}'
+                    )
+                    resp_json = {}
             if 'data' not in resp_json:
                 logger.error(
                     f'Error getting model info from LiteLLM proxy: {resp_json}'
