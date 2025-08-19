@@ -373,6 +373,7 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations/events/',
             '/api/options/conversations/list-files-internal/',
             '/api/options/conversations/select-file-internal/',
+            '/api/options/conversations/space/',
         ]
 
     async def dispatch(self, request: Request, call_next):
@@ -447,6 +448,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations/events/',
             '/api/options/conversations/list-files-internal/',
             '/api/options/conversations/select-file-internal/',
+            '/api/options/conversations/space/',
         ]
 
     async def dispatch(self, request: Request, call_next):

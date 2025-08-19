@@ -438,6 +438,11 @@ async def get_conversations_by_space(
 ) -> dict[str, Any]:
     if not space_id:
         raise HTTPException(status_code=400, detail='Space ID is required')
+
+    # Validate limit to prevent excessive data retrieval
+    if limit > 1000:
+        raise HTTPException(status_code=400, detail='Limit cannot exceed 1000 items')
+
     try:
         result = await conversation_module._get_conversations_by_space_id(
             space_id=space_id,
