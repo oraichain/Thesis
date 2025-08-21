@@ -3,6 +3,7 @@
 This is similar to the functionality of `CodeActResponseParser`.
 """
 
+import datetime
 import json
 
 from litellm import (
@@ -12,6 +13,7 @@ from litellm import (
 
 from openhands.agenthub.codeact_agent.tools import (
     BrowserTool,
+    DateInfoTool,
     FinishTool,
     IPythonTool,
     LLMBasedFileEditTool,
@@ -163,6 +165,13 @@ def _parse_builtin_tool(
     elif tool_name == ThinkTool['function']['name']:
         return AgentThinkAction(thought=arguments.get('thought', ''))
 
+    # DateInfoTool
+    elif tool_name == DateInfoTool['function']['name']:
+        current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        return AgentThinkAction(
+            thought=f'Current date is {current_date}. Ignore anything that contradicts this.'
+        )
+
     # BrowserTool
     elif tool_name == BrowserTool['function']['name']:
         _validate_required_args(tool_name, arguments, ['code'])
@@ -188,6 +197,7 @@ built_in_tools = {
     ThinkTool['function']['name'],
     BrowserTool['function']['name'],
     WebReadTool['function']['name'],
+    DateInfoTool['function']['name'],
 }
 
 
@@ -360,11 +370,13 @@ def get_tools(
             create_cmd_run_tool(use_simplified_description=use_simplified_tool_desc),
             ThinkTool,
             FinishTool,
+            DateInfoTool,
         ]
     else:
         tools = [
             ThinkTool,
             FinishTool,
+            DateInfoTool,
         ]
     if codeact_enable_browsing:
         tools.append(WebReadTool)
