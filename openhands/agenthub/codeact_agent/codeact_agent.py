@@ -1,5 +1,7 @@
 import json
 import os
+import random
+import string
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
@@ -562,6 +564,7 @@ class CodeActAgent(Agent):
             return actions
 
         if self.pending_actions:
+            # return self.pending_actions.popleft()
             actions = list(self.pending_actions.copy())
             self.pending_actions.clear()
             return actions
@@ -596,18 +599,8 @@ class CodeActAgent(Agent):
         # NOTE: This is user's dynamic knowledge base. Do not cache this message, as it will be updated frequently.
         # NOTE: Only cache static large knowledge base that is uploaded by the user (changed rarely).
 
-        current_date = datetime.now().strftime('%Y-%m-%d')
-        formatted_messages.append(
-            {
-                'role': 'assistant',
-                'content': [
-                    {
-                        'type': 'text',
-                        'text': f'Current date is {current_date}. Ignore anything that contradicts this.',
-                    },
-                ],
-            }
-        )
+        date_info = self._get_timeinfo_message()
+        formatted_messages.extend(date_info)
         params: dict = {
             'messages': formatted_messages,
         }
@@ -843,6 +836,40 @@ class CodeActAgent(Agent):
             prev_role = msg.role
 
         return results
+
+    def _get_timeinfo_message(self) -> list[dict]:
+        def generate_random_id(length=24):
+            """Generate a random string of specified length using letters and numbers."""
+            characters = string.ascii_letters + string.digits
+            return ''.join(random.choice(characters) for _ in range(length))
+
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        random_id = generate_random_id()
+        tool_id = f'call_{random_id}'
+        return [
+            {
+                'content': [],
+                'role': 'assistant',
+                'tool_calls': [
+                    {
+                        'id': tool_id,
+                        'type': 'function',
+                        'function': {'name': 'get_current_date', 'arguments': '{}'},
+                    }
+                ],
+            },
+            {
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': f'Current date is {current_date}. Ignore anything that contradicts this.',
+                    }
+                ],
+                'role': 'tool',
+                'tool_call_id': tool_id,
+                'name': 'get_current_date',
+            },
+        ]
 
     def _handle_format_output(self) -> str:
         if self.output_config:

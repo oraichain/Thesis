@@ -529,12 +529,13 @@ def test_select_tools_based_on_mode_missing_pyodide_tools(agent: CodeActAgent):
     tools = agent._select_tools_based_on_mode(ResearchMode.CHAT)
 
     # Should not fall back to base tools since there are pyodide tools present
-    assert len(tools) == 4
+    assert len(tools) == 5
     tool_names = [tool['function']['name'] for tool in tools]
     assert 'think' in tool_names
     assert 'finish' in tool_names
     assert 'search_tool' in tool_names
     assert 'str_replace_editor' in tool_names
+    assert 'get_current_date' in tool_names
 
 
 def test_select_tools_based_on_mode_duplicate_tools(agent: CodeActAgent):
