@@ -3,7 +3,6 @@
 This is similar to the functionality of `CodeActResponseParser`.
 """
 
-import datetime
 import json
 
 from litellm import (
@@ -30,6 +29,7 @@ from openhands.events.action import (
     Action,
     AgentDelegateAction,
     AgentFinishAction,
+    AgentGetTimeAction,
     AgentThinkAction,
     BrowseInteractiveAction,
     BrowseURLAction,
@@ -167,10 +167,7 @@ def _parse_builtin_tool(
 
     # DateInfoTool
     elif tool_name == DateInfoTool['function']['name']:
-        current_date = datetime.datetime.now().strftime('%Y-%m-%d')
-        return AgentThinkAction(
-            thought=f'Current date is {current_date}. Ignore anything that contradicts this.'
-        )
+        return AgentGetTimeAction()
 
     # BrowserTool
     elif tool_name == BrowserTool['function']['name']:
