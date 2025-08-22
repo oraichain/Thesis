@@ -715,10 +715,14 @@ class CodeActAgent(Agent):
 
         messages = self._get_messages(condensed_history, research_mode=research_mode)
         formatted_messages = self.llm.format_messages_for_llm(messages)
+        last_message = formatted_messages[-1]
+        add_cache_control = False
+        if last_message.get('cache_control'):
+            add_cache_control = True
+            last_message.pop('cache_control')
         # NOTE: This is user's dynamic knowledge base. Do not cache this message, as it will be updated frequently.
         # NOTE: Only cache static large knowledge base that is uploaded by the user (changed rarely).
-
-        date_info = self._get_timeinfo_message()
+        date_info = self._get_timeinfo_message(add_cache_control)
         formatted_messages.extend(date_info)
         if self.is_replay:
             self.setup_replay_script(formatted_messages)
@@ -971,7 +975,7 @@ class CodeActAgent(Agent):
 
         return results
 
-    def _get_timeinfo_message(self) -> list[dict]:
+    def _get_timeinfo_message(self, add_cache_control: bool = False) -> list[dict]:
         def generate_random_id(length=24):
             """Generate a random string of specified length using letters and numbers."""
             characters = string.ascii_letters + string.digits
@@ -980,7 +984,7 @@ class CodeActAgent(Agent):
         current_date = datetime.now().strftime('%Y-%m-%d')
         random_id = generate_random_id()
         tool_id = f'call_{random_id}'
-        return [
+        messages: list[dict[str, Any]] = [
             {
                 'content': [],
                 'role': 'assistant',
@@ -1004,6 +1008,9 @@ class CodeActAgent(Agent):
                 'name': 'get_current_date',
             },
         ]
+        if add_cache_control:
+            messages[-1]['cache_control'] = {'type': 'ephemeral'}
+        return messages
 
     def _handle_format_output(self) -> str:
         if self.output_config:
