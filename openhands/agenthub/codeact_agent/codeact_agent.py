@@ -715,11 +715,14 @@ class CodeActAgent(Agent):
 
         messages = self._get_messages(condensed_history, research_mode=research_mode)
         formatted_messages = self.llm.format_messages_for_llm(messages)
-        last_message = formatted_messages[-1]
-        add_cache_control = False
-        if last_message.get('cache_control'):
-            add_cache_control = True
-            last_message.pop('cache_control')
+        try:
+            last_message = formatted_messages[-1]
+            add_cache_control = False
+            if last_message.get('cache_control'):
+                add_cache_control = True
+                last_message.pop('cache_control')
+        except Exception:
+            add_cache_control = False
         # NOTE: This is user's dynamic knowledge base. Do not cache this message, as it will be updated frequently.
         # NOTE: Only cache static large knowledge base that is uploaded by the user (changed rarely).
         date_info = self._get_timeinfo_message(add_cache_control)
