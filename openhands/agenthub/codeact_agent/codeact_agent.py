@@ -140,6 +140,18 @@ class CodeActAgent(Agent):
             and 'simple' in self.routing_llms
             else None
         )
+        self.is_replay = False
+
+    def set_replay_actions(self, replay_actions: list['Action']) -> None:
+        super().set_replay_actions(replay_actions)
+        self.is_replay = True
+        # if (
+        #     self.routing_llms
+        #     and self.routing_llms.get('simple')
+        # ):
+        #     self.llm = self.routing_llms['simple']
+        #     if self.streaming_routing_llm:
+        #         self.streaming_llm = self.streaming_routing_llm
 
     @override
     def set_system_prompt(self, system_prompt: str) -> None:
@@ -601,6 +613,8 @@ class CodeActAgent(Agent):
 
         date_info = self._get_timeinfo_message()
         formatted_messages.extend(date_info)
+        if self.is_replay:
+            self.setup_replay_script(formatted_messages)
         params: dict = {
             'messages': formatted_messages,
         }
@@ -704,6 +718,19 @@ class CodeActAgent(Agent):
             #     self.pending_actions.append(action)
             # return self.pending_actions.popleft()
         return None
+
+    def setup_replay_script(
+        self, formatted_messages: list[dict[Any, Any]]
+    ) -> list[dict[Any, Any]]:
+        if not self.is_replay:
+            return formatted_messages
+        self.is_replay = False
+        message = 'Use above data and do not think or use any other data or tools, give me the final result.'
+        user_message = self.llm.format_messages_for_llm(
+            [Message(role='user', content=[TextContent(text=message)])]
+        )
+        formatted_messages.extend(user_message)
+        return formatted_messages
 
     def _get_messages(
         self, events: list[Event], research_mode: str | None = None
