@@ -676,18 +676,17 @@ async def get_final_result(conversation_id: str, request: Request) -> str | None
             conversation_manager.file_store,
             conversation.user_id,
         )
-        is_running = await conversation_manager.is_agent_loop_running(conversation_id)
-        if not is_running:
-            final_result = await get_final_result_from_conversation(
-                conversation_id=conversation_id,
-                event_stream=event_store,
-                save_to_database=True,
-            )
-            logger.info(f'Final result from event store: {final_result}')
-            return final_result
+        # is_running = await conversation_manager.is_agent_loop_running(conversation_id)
+        # if not is_running:
+        final_result = await get_final_result_from_conversation(
+            conversation_id=conversation_id,
+            event_stream=event_store,
+            save_to_database=True,
+        )
+        logger.info(f'Final result from event store: {final_result}')
+        return final_result
 
         # If conversation is still running, return None as there's no final result yet
-        return None
     except Exception as e:
         logger.error(
             f'Error getting final result for conversation {conversation_id}: {str(e)}'
