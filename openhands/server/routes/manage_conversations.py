@@ -683,8 +683,11 @@ async def get_final_result(conversation_id: str, request: Request) -> str | None
                 event_stream=event_store,
                 save_to_database=True,
             )
+            logger.info(f'Final result from event store: {final_result}')
+            return final_result
 
-        return final_result
+        # If conversation is still running, return None as there's no final result yet
+        return None
     except Exception as e:
         logger.error(
             f'Error getting final result for conversation {conversation_id}: {str(e)}'
