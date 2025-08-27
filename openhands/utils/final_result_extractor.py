@@ -181,8 +181,8 @@ async def save_final_result_to_database(
     Returns:
         bool: True if successfully saved, False otherwise
     """
-    try:
-        with db_pool.get_connection_context() as conn:
+    with db_pool.get_connection_context() as conn:
+        try:
             with conn.cursor() as cursor:
                 # Update the conversations table with final_result
                 cursor.execute(
@@ -194,7 +194,9 @@ async def save_final_result_to_database(
                     (final_result, conversation_id),
                 )
 
-                # If no rows were updated, log a warning but don't create new record
+                # Commit the transaction
+                conn.commit()
+
                 if cursor.rowcount == 0:
                     logger.warning(
                         f'No conversation found to update with conversation_id: {conversation_id}'
@@ -205,10 +207,10 @@ async def save_final_result_to_database(
                         f'Successfully saved final result to database for conversation {conversation_id}'
                     )
                     return True
-
-    except Exception as e:
-        logger.error(f'Error saving final result to database: {str(e)}')
-        return False
+        except Exception as e:
+            logger.error(f'Error saving final result to database: {str(e)}')
+            conn.rollback()
+            return False
 
 
 async def extract_final_result(
