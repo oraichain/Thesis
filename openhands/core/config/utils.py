@@ -28,6 +28,7 @@ from openhands.core.config.mcp_config import MCPConfig
 from openhands.core.config.sandbox_config import SandboxConfig
 from openhands.core.config.search_engine import SearchEngineConfig
 from openhands.core.config.security_config import SecurityConfig
+from openhands.core.config.worker_config import WorkerConfig
 from openhands.storage import get_file_store
 from openhands.storage.files import FileStore
 
@@ -221,7 +222,22 @@ def load_from_toml(cfg: AppConfig, toml_file: str = 'config.toml') -> None:
             # Re-raise ValueError from ConversationConfig.from_toml_section
             raise ValueError('Error in [conversation] section in config.toml')
 
-            # Process MCP sections if present
+    # Process worker section if present
+    if 'worker' in toml_config:
+        try:
+            worker_mapping = WorkerConfig.from_toml_section(toml_config['worker'])
+            # We only use the base worker config for now
+            if 'worker' in worker_mapping:
+                cfg.worker = worker_mapping['worker']
+        except (TypeError, KeyError, ValidationError) as e:
+            logger.openhands_logger.warning(
+                f'Cannot parse [worker] config from toml, values have not been applied.\nError: {e}'
+            )
+        except ValueError:
+            # Re-raise ValueError from WorkerConfig.from_toml_section
+            raise ValueError('Error in [worker] section in config.toml')
+
+    # Process MCP sections if present
     if 'mcp' in toml_config:
         try:
             cfg.dict_mcp_config = MCPConfig.from_toml_section(toml_config['mcp'])
@@ -328,6 +344,7 @@ def load_from_toml(cfg: AppConfig, toml_file: str = 'config.toml') -> None:
         'mcp',
         'search_engine',
         'conversation',
+        'worker',
     }
     for key in toml_config:
         if key.lower() not in known_sections:

@@ -22,6 +22,7 @@ from openhands.core.config.utils import (
     parse_arguments,
     setup_config_from_args,
 )
+from openhands.core.config.worker_config import WorkerConfig
 
 __all__ = [
     'OH_DEFAULT_AGENT',
@@ -44,4 +45,5 @@ __all__ = [
     'setup_config_from_args',
     'SearchEngineConfig',
     'ConversationConfig',
+    'WorkerConfig',
 ]

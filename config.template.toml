@@ -421,3 +421,21 @@ name = "google"
 [conversation]
 # Whether to enable streaming for the conversation
 enable_streaming = true
+
+#################################### Worker ####################################
+# Configuration for worker mode (standalone vs multi-worker)
+##############################################################################
+[worker]
+# Worker mode: "standalone" (default) or "multi_worker"
+# In standalone mode, all processing happens in a single process
+# In multi_worker mode, work is distributed across multiple worker processes
+# mode = "standalone"
+
+# Queue configuration (required when mode is "multi_worker")
+# queue_type = "redis"
+# queue_url = "redis://localhost:6379/0"
+# queue_host = "localhost"
+# queue_port = 6379
+# queue_db = 0
+# queue_password = ""
+# queue_num_partitions = 4

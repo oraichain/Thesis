@@ -17,6 +17,7 @@ from openhands.core.config.mcp_config import MCPConfig
 from openhands.core.config.sandbox_config import SandboxConfig
 from openhands.core.config.search_engine import SearchEngineConfig
 from openhands.core.config.security_config import SecurityConfig
+from openhands.core.config.worker_config import WorkerConfig
 
 
 class AppConfig(BaseModel):
@@ -57,6 +58,7 @@ class AppConfig(BaseModel):
         evaluation_endpoint_url: URL of the evaluation endpoint.
         evaluation_timeout: Timeout for the evaluation endpoint.
         enable_evaluation: Whether to enable the evaluation endpoint.
+        worker: Worker configuration settings for standalone vs multi-worker mode.
     """
 
     llms: dict[str, LLMConfig] = Field(default_factory=dict)
@@ -116,6 +118,7 @@ class AppConfig(BaseModel):
     evaluation_timeout: int = Field(default=60)
     enable_evaluation: bool = Field(default=False)
     conversation: ConversationConfig = Field(default_factory=ConversationConfig)
+    worker: WorkerConfig = Field(default_factory=WorkerConfig)
 
     def get_llm_config(self, name: str = 'llm') -> LLMConfig:
         """'llm' is the name for default config (for backward compatibility prior to 0.8)."""
