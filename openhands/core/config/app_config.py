@@ -107,6 +107,7 @@ class AppConfig(BaseModel):
     )
     condenser: CondenserConfig = Field(default_factory=NoOpCondenserConfig)
     enable_microagents: bool = Field(default=True)
+    enable_test_refund_credit: bool = Field(default=False)
 
     defaults_dict: ClassVar[dict] = {}
 
