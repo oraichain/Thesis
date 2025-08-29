@@ -34,6 +34,8 @@ def patch_db_pool_instance():
     ) as mock_db_pool, patch('openhands.core.database.db_pool', MagicMock()), patch(
         'openhands.shared.config.file_store', 'memory'
     ):
+        mock_db_pool.get_connection = MagicMock(return_value=MagicMock())
+
         # Add async mock for the function on the db pool instance
         mock_db_pool._add_mem0_conversation_job_direct_db = AsyncMock(return_value=True)
 
