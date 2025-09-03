@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 
 import asyncpg
+import dotenv
+
+dotenv.load_dotenv()
 
 
 async def create_database_if_not_exists(conn, db_name):
