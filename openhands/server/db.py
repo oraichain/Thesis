@@ -1,8 +1,12 @@
+import asyncio
 import os
+from functools import wraps
 
 from databases import Database
 from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+from openhands.utils.async_utils import _run_in_loop
 
 POSTGRES_USER = os.getenv('PGBOUNCER_DB_USER') or os.getenv('POSTGRES_USER')
 POSTGRES_PASSWORD = os.getenv('PGBOUNCER_DB_PASSWORD') or os.getenv('POSTGRES_PASSWORD')
@@ -31,3 +35,26 @@ async def init_db() -> None:
     # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all)
+
+
+def connect_database(func):
+    @wraps(func)
+    def func_wapper(*args, **kwargs):
+        try:
+            loop = asyncio.get_event_loop()
+        except Exception:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        if loop.is_running():
+            _run_in_loop(database.connect(), loop, 10)
+        else:
+            loop.run_until_complete(database.connect())
+        try:
+            return func(*args, **kwargs)
+        finally:
+            if loop.is_running():
+                _run_in_loop(database.disconnect(), loop, 10)
+            else:
+                loop.run_until_complete(database.disconnect())
+
+    return func_wapper

@@ -28,6 +28,7 @@ class WorkerConfig(BaseModel):
         queue_db: The database number to use for the queue (optional, defaults to 0).
         queue_password: The password for queue authentication (optional).
         queue_num_partitions: The number of partitions for the queue (optional, defaults to 4).
+        queue_max_messages_per_partitions: The maximum number of messages per partition for the queue (optional, defaults to 1000).
     """
 
     mode: WorkerMode = Field(
@@ -53,6 +54,10 @@ class WorkerConfig(BaseModel):
     )
     queue_num_partitions: int | None = Field(
         default=None, description='The number of partitions for the queue'
+    )
+    queue_max_messages_per_partitions: int | None = Field(
+        default=None,
+        description='The maximum number of messages per partition for the queue',
     )
 
     model_config = {'extra': 'forbid'}

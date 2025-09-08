@@ -18,6 +18,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from openhands.core.config.llm_config import LLMConfig
+from openhands.core.config.worker_config import WorkerMode
+from openhands.core.events.conversation_events import (
+    create_new_conversation_event,
+)
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema.research import ResearchMode
 from openhands.events.action.message import MessageAction
@@ -59,7 +63,8 @@ from openhands.utils.conversation_summary import (
     generate_conversation_title,
     get_default_conversation_title,
 )
-from openhands.utils.get_user_setting import get_user_setting
+from openhands.utils.get_user_setting import get_user_setting, settings_for_conversation
+from openhands.worker.publisher import create_publisher_from_config
 
 app = APIRouter(prefix='/api')
 
@@ -118,6 +123,10 @@ async def _create_new_conversation(
         extra={'signal': 'create_conversation', 'user_id': user_id},
     )
 
+    # Worker mode will be handled later in the conversation creation process
+    # Standalone mode: uses conversation manager directly
+    # Multi-worker mode: publishes to message queue
+
     running_conversations = await conversation_manager.get_running_agent_loops(user_id)
     if (
         len(running_conversations) >= config.max_concurrent_conversations
@@ -129,29 +138,9 @@ async def _create_new_conversation(
         )
 
     logger.info('Loading settings')
-    settings = await get_user_setting(user_id)
-
-    session_init_args: dict = {}
-    if settings:
-        session_init_args = {**settings.__dict__, **session_init_args}
-        # We could use litellm.check_valid_key for a more accurate check,
-        # but that would run a tiny inference.
-        if (
-            not settings.llm_api_key
-            or settings.llm_api_key.get_secret_value().isspace()
-        ):
-            logger.warn(f'Missing api key for model {settings.llm_model}')
-            raise LLMAuthenticationError(
-                'Error authenticating with the LLM provider. Please check your API key'
-            )
-
-    else:
-        logger.warn('Settings not present, not starting conversation')
-        raise MissingSettingsError('Settings not found')
-
-    session_init_args['git_provider_tokens'] = git_provider_tokens
-    session_init_args['selected_repository'] = selected_repository
-    session_init_args['selected_branch'] = selected_branch
+    session_init_args = await settings_for_conversation(
+        user_id, git_provider_tokens, selected_repository, selected_branch
+    )
     conversation_init_data = ConversationInitData(**session_init_args)
     logger.info('Loading conversation store')
     conversation_store = await ConversationStoreImpl.get_instance(config, user_id, None)
@@ -191,8 +180,12 @@ async def _create_new_conversation(
         )
     )
 
+    is_start_agent = False
+    if config.worker.mode == WorkerMode.STANDALONE:
+        is_start_agent = True
+    # Standalone mode: Create conversation using conversation manager
     logger.info(
-        f'Starting agent loop for conversation {conversation_id}',
+        f'Starting agent loop for conversation {conversation_id} in {config.worker.mode} mode',
         extra={'user_id': user_id, 'session_id': conversation_id},
     )
     initial_message_action = None
@@ -226,7 +219,56 @@ async def _create_new_conversation(
         raw_followup_conversation_id=raw_followup_conversation_id,
         space_section_id=space_section_id,
         output_config=output_config,
+        is_start_agent=is_start_agent,
     )
+
+    if not is_start_agent:
+        # Multi-worker mode: Publish NewConversationEvent to message queue
+        logger.info(
+            f'Publishing NewConversationEvent for {conversation_id} to message queue',
+            extra={'user_id': user_id, 'session_id': conversation_id},
+        )
+
+        # Create publisher instance
+        publisher = create_publisher_from_config(
+            publisher_name='api_server_publisher', config=config
+        )
+
+        # Create NewConversationEvent
+        new_conversation_event = create_new_conversation_event(
+            conversation_id=conversation_id,
+            conversation_init_data=conversation_init_data.model_dump(),
+            user_id=user_id,
+            initial_user_msg=initial_user_msg,
+            image_urls=image_urls,
+            replay_json=replay_json,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            github_user_id=None,
+            mnemonic=mnemonic,
+            mcp_disable=mcp_disable,
+            knowledge_base=knowledge_base,
+            space_id=space_id,
+            thread_follow_up=thread_follow_up,
+            research_mode=research_mode,
+            raw_followup_conversation_id=raw_followup_conversation_id,
+            space_section_id=space_section_id,
+            output_config=output_config,
+            attach_convo_id=attach_convo_id,
+        )
+
+        # Start publisher and publish event
+        publisher.start()
+        try:
+            message_id = publisher.publish(
+                key=conversation_id, data=new_conversation_event.model_dump()
+            )
+            logger.info(
+                f'Successfully published NewConversationEvent with message ID: {message_id}',
+                extra={'user_id': user_id, 'session_id': conversation_id},
+            )
+        finally:
+            publisher.stop()
     logger.info(f'Finished initializing conversation {conversation_id}')
 
     return conversation_id, conversation_title

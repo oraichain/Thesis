@@ -6,11 +6,14 @@ from typing import Any
 import socketio
 
 from openhands.core.config import AppConfig
+from openhands.core.schema import AgentState
 from openhands.events.action import MessageAction
 from openhands.events.event_store import EventStore
+from openhands.events.stream import EventStream
 from openhands.server.config.server_config import ServerConfig
 from openhands.server.monitoring import MonitoringListener
 from openhands.server.session.conversation import Conversation
+from openhands.server.session.session import Session
 from openhands.server.settings import Settings
 from openhands.storage.conversation.conversation_store import ConversationStore
 from openhands.storage.files import FileStore
@@ -66,6 +69,7 @@ class ConversationManager(ABC):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
+        is_start_agent: bool = True,
     ) -> EventStore | None:
         """Join a conversation and return its event stream."""
 
@@ -76,7 +80,10 @@ class ConversationManager(ABC):
 
     @abstractmethod
     async def get_running_agent_loops(
-        self, user_id: str | None = None, filter_to_sids: set[str] | None = None
+        self,
+        user_id: str | None = None,
+        filter_to_sids: set[str] | None = None,
+        filter_to_states: list[AgentState] | None = None,
     ) -> set[str]:
         """Get all running agent loops, optionally filtered by user ID and session IDs."""
 
@@ -106,12 +113,27 @@ class ConversationManager(ABC):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
+        is_start_agent: bool = True,
     ) -> EventStore:
         """Start an event loop if one is not already running"""
 
     @abstractmethod
+    def get_event_stream(self, sid: str) -> EventStream | None:
+        """Get the event stream for a session."""
+
+    @abstractmethod
     async def send_to_event_stream(self, connection_id: str, data: dict):
         """Send data to an event stream."""
+
+    @abstractmethod
+    async def send_to_event_stream_by_sid(self, sid: str, data: dict):
+        """Send data to an event stream by session ID."""
+
+    @abstractmethod
+    async def get_session_from_connection_id(
+        self, connection_id: str
+    ) -> Session | None:
+        """Send data to a worker stream."""
 
     @abstractmethod
     async def disconnect_from_session(self, connection_id: str):

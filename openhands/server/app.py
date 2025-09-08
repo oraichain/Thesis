@@ -11,6 +11,8 @@ from fastapi import (
 
 import openhands.agenthub  # noqa F401 (we import this to get the agents registered)
 from openhands import __version__
+from openhands.core.config.worker_config import WorkerMode
+from openhands.server.api_consumer import create_api_consumer_service
 from openhands.server.backend_pre_start import init
 from openhands.server.db import database, engine
 from openhands.server.initial_data import init as init_initial_data
@@ -38,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    # Initialize API consumer service for multi-worker mode
+    api_consumer_service = None
+
     try:
         # Connect to database
         await database.connect()
@@ -50,6 +55,16 @@ async def _lifespan(app: FastAPI):
             await mcp_tools_cache.initialize_tools(
                 config.dict_mcp_config, config.dict_search_engine_config
             )
+        if config.worker.mode == WorkerMode.MULTI_WORKER:
+            logger.info('Starting API consumer service for multi-worker mode')
+
+            # Create and start the API consumer service
+            api_consumer_service = create_api_consumer_service(
+                conversation_manager=conversation_manager
+            )
+            api_consumer_service.start()
+
+            logger.info('API consumer service started successfully')
 
         # Start conversation manager
         async with conversation_manager:
@@ -60,6 +75,9 @@ async def _lifespan(app: FastAPI):
     finally:
         # Disconnect from database
         await database.disconnect()
+        if api_consumer_service:
+            logger.info('Stopping API consumer service')
+            api_consumer_service.stop()
 
 
 app = FastAPI(

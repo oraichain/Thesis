@@ -41,7 +41,8 @@ repos:
             types-requests==2.32.0.20250515, 
             types-setuptools==80.4.0.20250511, 
             types-pyyaml==6.0.12.20250516, 
-            types-toml==0.10.8.20240310
+            types-toml==0.10.8.20240310,
+            types-cachetools==6.2.0.20250827,
           ]
         entry: mypy --config-file dev_config/python/mypy.ini openhands/
         always_run: true

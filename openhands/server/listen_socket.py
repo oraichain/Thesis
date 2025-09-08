@@ -6,6 +6,8 @@ from urllib.parse import parse_qs
 import jwt
 from socketio.exceptions import ConnectionRefusedError
 
+from openhands.core.config.worker_config import WorkerMode
+from openhands.core.events.conversation_events import create_user_action_event
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.action import (
     NullAction,
@@ -38,6 +40,7 @@ from openhands.server.thesis_auth import (
 from openhands.storage.conversation.conversation_store import ConversationStore
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
 from openhands.utils.get_user_setting import get_user_setting
+from openhands.worker.publisher import create_publisher_from_config
 
 
 def create_provider_tokens_object(
@@ -246,6 +249,9 @@ async def connect(connection_id: str, environ):
         f'Replaying event stream for conversation {conversation_id} with connection_id {connection_id}...'
     )
     async_store = AsyncEventStoreWrapper(event_store, latest_event_id + 1)
+    is_start_agent = False
+    if config.worker.mode == WorkerMode.STANDALONE:
+        is_start_agent = True
 
     event_stream = await conversation_manager.join_conversation(
         conversation_id,
@@ -264,10 +270,13 @@ async def connect(connection_id: str, environ):
         raw_followup_conversation_id,
         space_section_id,
         None,
+        is_start_agent=is_start_agent,
     )
     logger.info(
         f'Connected to conversation {conversation_id} with connection_id {connection_id}. Replaying event stream...'
     )
+    if not is_start_agent:
+        await handle_user_action(connection_id=connection_id, data={})
     agent_state_changed = None
     if event_stream is None:
         raise ConnectionRefusedError('Failed to join conversation')
@@ -334,16 +343,49 @@ async def connect(connection_id: str, environ):
     logger.info(f'Finished replaying event stream for conversation {conversation_id}')
 
 
+async def handle_user_action(connection_id: str, data: dict):
+    if config.worker.mode == WorkerMode.STANDALONE:
+        await conversation_manager.send_to_event_stream(connection_id, data)
+    else:
+        session = await conversation_manager.get_session_from_connection_id(
+            connection_id
+        )
+        if not session:
+            raise RuntimeError(f'no_connected_session:{connection_id}')
+        publisher = create_publisher_from_config(
+            publisher_name='api_server_publisher', config=config
+        )
+        if not session.user_id:
+            raise RuntimeError(f'no_user_id:{connection_id}')
+
+        event_data = create_user_action_event(
+            conversation_id=session.sid,
+            user_id=session.user_id,
+            event_data=data,
+        )
+        publisher.start()
+        try:
+            message_id = publisher.publish(
+                key=session.sid, data=event_data.model_dump()
+            )
+            logger.info(
+                f'Successfully published UserActionEvent with message ID: {message_id}',
+                extra={'user_id': session.user_id, 'session_id': session.sid},
+            )
+        finally:
+            publisher.stop()
+
+
 @sio.event
 async def oh_user_action(connection_id: str, data: dict):
-    await conversation_manager.send_to_event_stream(connection_id, data)
+    return await handle_user_action(connection_id, data)
 
 
 @sio.event
 async def oh_action(connection_id: str, data: dict):
     # TODO: Remove this handler once all clients are updated to use oh_user_action
     # Keeping for backward compatibility with in-progress sessions
-    await conversation_manager.send_to_event_stream(connection_id, data)
+    return await handle_user_action(connection_id, data)
 
 
 @sio.event

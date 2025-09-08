@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from concurrent import futures
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Coroutine, Iterable, List
@@ -113,7 +114,20 @@ async def run_in_loop(
     return result
 
 
-def _run_in_loop(coro: Coroutine, loop: asyncio.AbstractEventLoop, timeout: float):
+def _run_in_loop(
+    coro: Coroutine,
+    loop: asyncio.AbstractEventLoop,
+    timeout: float,
+    is_waiting: bool = True,
+):
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    result = future.result(timeout=timeout)
-    return result
+    if is_waiting:
+        result = future.result(timeout=timeout)
+        return result
+    return
+
+
+def run_loop_in_thread(loop):
+    asyncio.set_event_loop(loop)
+    thread = threading.Thread(target=loop.run_forever, args=())
+    thread.start()

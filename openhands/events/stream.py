@@ -30,6 +30,7 @@ class EventStreamSubscriber(str, Enum):
     MEMORY = 'memory'
     MAIN = 'main'
     TEST = 'test'
+    CONVERSATION_CONSUMER = 'conversation_consumer'
 
 
 async def session_exists(
@@ -88,6 +89,7 @@ class EventStream(EventStore):
         self._thread_loops[subscriber_id][callback_id] = loop
 
     def close(self) -> None:
+        print('EventStream: close')
         self._stop_flag.set()
         if self._queue_thread.is_alive():
             self._queue_thread.join()
@@ -219,6 +221,24 @@ class EventStream(EventStore):
                 or shared_config.enable_write_to_local
             ):
                 self._store_cache_page(current_write_page)
+        self._queue.put(event)
+        return event
+
+    def stream_event_only(self, event: Event, source: EventSource) -> Any:
+        """
+        Stream an event to subscribers without saving to storage.
+        Used for forwarding already-saved events from workers to API subscribers.
+        """
+        # Set source if not already set
+        if not hasattr(event, '_source') or event._source is None:  # type: ignore[attr-defined]
+            event._source = source  # type: ignore[attr-defined]
+
+        # Apply secret replacement for security
+        data = event_to_dict(event)
+        data = self._replace_secrets(data)
+        event = event_from_dict(data)
+
+        # ONLY notify subscribers, skip ALL storage logic
         self._queue.put(event)
         return event
 

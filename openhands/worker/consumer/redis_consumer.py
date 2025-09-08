@@ -8,11 +8,20 @@ from BaseConsumer using Redis Streams for message queuing.
 import json
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import redis
+from opentelemetry import trace
+
+from openhands.utils.messaging_tracing import (
+    clean_trace_context_from_message,
+    start_consumer_span,
+)
 
 from .base import BaseConsumer
+
+trace_provider = trace.get_tracer_provider()
+tracer = trace_provider.get_tracer(__name__)
 
 
 class RedisConsumer(BaseConsumer):
@@ -26,7 +35,7 @@ class RedisConsumer(BaseConsumer):
     def __init__(
         self,
         consumer_name: str,
-        group_name: str,
+        group_name: str = '',
         redis_host: str = 'localhost',
         redis_port: int = 6379,
         redis_db: int = 0,
@@ -36,6 +45,8 @@ class RedisConsumer(BaseConsumer):
         heartbeat_interval: int = 5,
         heartbeat_timeout: int = 15,
         rebalance_check_interval: int = 2,
+        message_processor: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+        read_from_start: bool = False,
     ):
         """
         Initialize Redis consumer.
@@ -52,6 +63,11 @@ class RedisConsumer(BaseConsumer):
             heartbeat_interval: Seconds between heartbeats
             heartbeat_timeout: Seconds before a consumer is considered inactive
             rebalance_check_interval: Seconds between rebalance checks
+            message_processor: Optional callback function for processing messages.
+                           If provided, this will be called instead of the default process_message implementation.
+                           Signature: (message_id: str, key: str, message_data: Dict[str, Any]) -> None
+            read_from_start: If True, consumer will read messages from the beginning of the stream.
+                           If False (default), consumer will only read new messages.
         """
         super().__init__(
             consumer_name=consumer_name,
@@ -63,6 +79,8 @@ class RedisConsumer(BaseConsumer):
         self.heartbeat_interval = heartbeat_interval
         self.heartbeat_timeout = heartbeat_timeout
         self.rebalance_check_interval = rebalance_check_interval
+        self.message_processor = message_processor
+        self.read_from_start = read_from_start
 
         self.redis_host = redis_host
         self.redis_port = redis_port
@@ -81,6 +99,8 @@ class RedisConsumer(BaseConsumer):
         self.heartbeat_thread: Optional[threading.Thread] = None
         self.last_rebalance_version = 0
         self.last_active_consumers: List[str] = []
+        self.initial_read_done = False
+        self.last_ids: Dict[str, str] = {}
 
     def connect(self) -> None:
         """Establish connection to Redis."""
@@ -117,6 +137,9 @@ class RedisConsumer(BaseConsumer):
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
 
+        if not self.group_name:
+            return
+
         for partition in range(self.num_partitions):
             stream_name = self.get_stream_name(partition)
             try:
@@ -134,17 +157,18 @@ class RedisConsumer(BaseConsumer):
 
     def setup_consumer(self) -> None:
         """Setup Redis consumer - register and start heartbeat thread."""
-        self.register_consumer()
 
         # Start heartbeat thread
-        self.heartbeat_thread = threading.Thread(
-            target=self._heartbeat_loop, daemon=True
-        )
-        self.heartbeat_thread.start()
+        if self.group_name:
+            self.register_consumer()
+            self.heartbeat_thread = threading.Thread(
+                target=self._heartbeat_loop, daemon=True
+            )
+            self.heartbeat_thread.start()
+            self.last_active_consumers = self.get_active_consumers()
 
         # Initial partition assignment
         self.assigned_partitions = self._rebalance()
-        self.last_active_consumers = self.get_active_consumers()
         print(
             f'Redis consumer setup complete, assigned partitions: {self.assigned_partitions}'
         )
@@ -157,6 +181,8 @@ class RedisConsumer(BaseConsumer):
         """Register this consumer with Redis and trigger rebalance."""
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
+        if not self.group_name:
+            return
 
         self.redis_client.hset(self.consumers_key, self.consumer_name, time.time())
         self.redis_client.incr(self.rebalance_version_key)
@@ -168,6 +194,8 @@ class RedisConsumer(BaseConsumer):
         """Unregister this consumer from Redis and trigger rebalance."""
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
+        if not self.group_name:
+            return
 
         self.redis_client.hdel(self.consumers_key, self.consumer_name)
         self.redis_client.incr(self.rebalance_version_key)
@@ -186,6 +214,8 @@ class RedisConsumer(BaseConsumer):
         """Get the list of active consumers, removing expired ones."""
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
+        if not self.group_name:
+            return []
 
         current_time = time.time()
         consumers = self.redis_client.hgetall(self.consumers_key)
@@ -223,6 +253,9 @@ class RedisConsumer(BaseConsumer):
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
 
+        if not self.group_name:
+            return list(range(self.num_partitions))
+
         num_consumers = len(active_consumers)
         if num_consumers == 0:
             return []
@@ -254,46 +287,56 @@ class RedisConsumer(BaseConsumer):
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
 
+        if not self.group_name:
+            return
+
         for partition in assigned_partitions:
             stream_name = self.get_stream_name(partition)
             try:
                 pending = self.redis_client.xpending(stream_name, self.group_name)
-                if pending and pending['pending'] > 0:
+                if not pending or pending['pending'] <= 0:
+                    return
                     # Get pending message IDs for this partition stream
-                    messages = self.redis_client.xpending_range(
-                        stream_name, self.group_name, '-', '+', count=10
-                    )
-                    message_ids_to_claim = []
+                messages = self.redis_client.xpending_range(
+                    stream_name, self.group_name, '-', '+', count=10
+                )
+                message_ids_to_claim = []
 
-                    for msg in messages:
-                        message_id = msg['message_id']
-                        delivered_to = msg['consumer'].decode()
-                        if delivered_to != self.consumer_name:
-                            message_ids_to_claim.append(message_id)
+                for msg in messages:
+                    message_id = msg['message_id']
+                    delivered_to = msg['consumer'].decode()
+                    if delivered_to != self.consumer_name:
+                        message_ids_to_claim.append(message_id)
 
-                    if message_ids_to_claim:
-                        print(
-                            f'Consumer {self.consumer_name} claiming {len(message_ids_to_claim)} messages from {stream_name}'
-                        )
-                        claimed_messages = self.redis_client.xclaim(
-                            stream_name,
-                            self.group_name,
-                            self.consumer_name,
-                            60000,  # min_idle_time in milliseconds
-                            message_ids_to_claim,
-                        )
+                if not message_ids_to_claim:
+                    return
+                print(
+                    f'Consumer {self.consumer_name} claiming {len(message_ids_to_claim)} messages from {stream_name}'
+                )
+                claimed_messages = self.redis_client.xclaim(
+                    stream_name,
+                    self.group_name,
+                    self.consumer_name,
+                    60000,  # min_idle_time in milliseconds
+                    message_ids_to_claim,
+                )
 
-                        if claimed_messages:
-                            # Process claimed messages
-                            for claimed_id, data in claimed_messages:
-                                key = data[b'key'].decode()
-                                message_data = json.loads(data[b'data'].decode())
-                                self.process_message(
-                                    claimed_id.decode(), key, message_data
-                                )
-                                self.redis_client.xack(
-                                    stream_name, self.group_name, claimed_id
-                                )
+                if not claimed_messages:
+                    return
+                    # Process claimed messages
+                for claimed_id, data in claimed_messages:
+                    key = data[b'key'].decode()
+                    message_data = json.loads(data[b'data'].decode())
+
+                    # Extract trace context from raw message data and add to message_data
+                    trace_context = self._extract_trace_context_from_raw_message(data)
+                    if trace_context:
+                        # Add trace context to message_data for processing
+                        for trace_key, trace_value in trace_context.items():
+                            message_data[f'_trace_{trace_key}'] = trace_value
+
+                    self.process_message(claimed_id.decode(), key, message_data)
+                    self.redis_client.xack(stream_name, self.group_name, claimed_id)
 
             except redis.exceptions.ResponseError as e:
                 # Stream might not exist yet
@@ -318,23 +361,52 @@ class RedisConsumer(BaseConsumer):
 
         # Build stream dictionary for assigned partitions
         streams_to_read = {}
+        # Determine which stream ID to use for reading
+        if self.read_from_start and not self.initial_read_done:
+            stream_id = '0'  # Read from beginning
+            self.initial_read_done = True
+        else:
+            if self.group_name:
+                stream_id = '>'  # Read only new messages
+            else:
+                stream_id = '$'
+
         for partition in self.assigned_partitions:
             stream_name = self.get_stream_name(partition)
-            streams_to_read[stream_name] = '>'
+            streams_to_read[stream_name] = stream_id
+
+        if not self.group_name:
+            if not self.last_ids:
+                self.initial_read_done = True
+                self.last_ids = {
+                    stream_name: stream_id for stream_name in streams_to_read
+                }
+            else:
+                # Use the last read message IDs instead of replacing entire dict
+                for stream_name in streams_to_read:
+                    if stream_name in self.last_ids:
+                        streams_to_read[stream_name] = self.last_ids[stream_name]
 
         try:
             # Read from multiple partition streams at once
-            messages = self.redis_client.xreadgroup(
-                groupname=self.group_name,
-                consumername=self.consumer_name,
-                streams=streams_to_read,
-                count=1,
-                block=1000,  # 1 second timeout
-            )
+            if self.group_name:
+                messages = self.redis_client.xreadgroup(
+                    groupname=self.group_name,
+                    consumername=self.consumer_name,
+                    streams=streams_to_read,
+                    count=1,
+                    block=100,
+                )
+            else:
+                messages = self.redis_client.xread(
+                    streams=streams_to_read,
+                    count=None,
+                    block=100,  # Use small timeout instead of non-blocking
+                )
 
             result = []
             if messages:
-                # Process messages from each stream
+                # Process messages from each stream and track last message ID
                 for stream_name_bytes, entries in messages:
                     stream_name = (
                         stream_name_bytes.decode()
@@ -342,6 +414,7 @@ class RedisConsumer(BaseConsumer):
                         else stream_name_bytes
                     )
 
+                    last_message_id = None
                     for message_id_bytes, data in entries:
                         message_id = (
                             message_id_bytes.decode()
@@ -351,7 +424,22 @@ class RedisConsumer(BaseConsumer):
                         key = data[b'key'].decode()
                         message_data = json.loads(data[b'data'].decode())
 
+                        # Extract trace context from raw message data and add to message_data
+                        trace_context = self._extract_trace_context_from_raw_message(
+                            data
+                        )
+                        if trace_context:
+                            # Add trace context to message_data for processing
+                            for trace_key, trace_value in trace_context.items():
+                                message_data[f'_trace_{trace_key}'] = trace_value
+
                         result.append((message_id, key, message_data))
+                        last_message_id = message_id
+
+                    # Update last_ids with the latest message ID from this stream
+                    # This ensures we don't miss messages between reads
+                    if not self.group_name and last_message_id:
+                        self.last_ids[stream_name] = last_message_id
 
             return result
 
@@ -372,8 +460,14 @@ class RedisConsumer(BaseConsumer):
         partition = self._extract_partition_from_message(message_id, key)
         stream_name = self.get_stream_name(partition)
 
+        if not self.group_name:
+            # For single consumers, stream position is tracked in read_messages()
+            # No need to update last_ids here as it could cause race conditions
+            return
+
         try:
             self.redis_client.xack(stream_name, self.group_name, message_id)
+            print(f'Acknowledged message {message_id} from {stream_name}')
         except redis.exceptions.ResponseError as e:
             print(f'Error acknowledging message {message_id} from {stream_name}: {e}')
 
@@ -381,6 +475,9 @@ class RedisConsumer(BaseConsumer):
         """Check if a rebalance is needed based on version changes or consumer group changes."""
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
+
+        if not self.group_name:
+            return False
 
         try:
             current_rebalance_version = int(
@@ -406,10 +503,55 @@ class RedisConsumer(BaseConsumer):
         self, message_id: str, key: str, message_data: Dict[str, Any]
     ) -> None:
         """
-        Process a single message. Default implementation writes to file.
-        Override this method for custom message processing.
+        Process a single message.
+
+        If a message_processor callback was provided during initialization,
+        it will be used. Otherwise, the default implementation writes to file.
         """
-        self.write_data(message_id, message_data)
+        # Start consumer span with tracing utilities
+        with start_consumer_span(
+            'redis-consume-message',
+            message_data,
+            messaging_system='redis',
+            message_id=key,
+            additional_attributes={
+                'messaging.redis.message_id': message_id,
+                'consumer.name': self.consumer_name,
+                'consumer.group': self.group_name or '',
+            },
+        ):
+            try:
+                # Clean message data for processing (remove trace context)
+                clean_data = clean_trace_context_from_message(message_data)
+
+                if self.message_processor:
+                    self.message_processor(message_id, key, clean_data)
+                else:
+                    # Default implementation - write to file
+                    self.write_data(message_id, clean_data)
+
+            except Exception:
+                # Exception handling is done by the context manager
+                raise
+
+    def _extract_trace_context_from_raw_message(
+        self, raw_message: Dict[bytes, bytes]
+    ) -> Dict[str, str]:
+        """Extract trace context from raw Redis message data."""
+        trace_context = {}
+
+        for key_bytes, value_bytes in raw_message.items():
+            key = key_bytes.decode() if isinstance(key_bytes, bytes) else key_bytes
+            if key.startswith('_trace_'):
+                trace_key = key[7:]  # Remove '_trace_' prefix
+                value = (
+                    value_bytes.decode()
+                    if isinstance(value_bytes, bytes)
+                    else value_bytes
+                )
+                trace_context[trace_key] = value
+
+        return trace_context
 
     def write_data(self, message_id: str, message: Dict[str, Any]) -> None:
         """Write message data to a file."""
@@ -432,6 +574,11 @@ class RedisConsumer(BaseConsumer):
         if not self.redis_client:
             raise RuntimeError('Redis client not connected')
 
+        if not self.num_partitions:
+            return []
+        if not self.group_name:
+            return list(range(self.num_partitions))
+
         try:
             with self.redis_client.lock('rebalance_lock', timeout=10):
                 active_consumers = self.get_active_consumers()
@@ -440,7 +587,7 @@ class RedisConsumer(BaseConsumer):
                     active_consumers = self.get_active_consumers()
 
                 assigned_partitions = self.assign_partitions(active_consumers)
-                self.claim_pending_messages(assigned_partitions)
+                # self.claim_pending_messages(assigned_partitions)
 
                 return assigned_partitions
         except Exception as e:
@@ -470,6 +617,8 @@ def create_redis_consumer(
     group_name: str,
     redis_host: str = 'localhost',
     redis_port: int = 6379,
+    message_processor: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+    read_from_start: bool = False,
     **kwargs,
 ) -> RedisConsumer:
     """
@@ -480,6 +629,9 @@ def create_redis_consumer(
         group_name: Name of the consumer group
         redis_host: Redis server host
         redis_port: Redis server port
+        message_processor: Optional callback function for processing messages
+        read_from_start: If True, consumer will read messages from the beginning of the stream.
+                       If False (default), consumer will only read new messages.
         **kwargs: Additional arguments passed to RedisConsumer constructor
 
     Returns:
@@ -490,5 +642,7 @@ def create_redis_consumer(
         group_name=group_name,
         redis_host=redis_host,
         redis_port=redis_port,
+        message_processor=message_processor,
+        read_from_start=read_from_start,
         **kwargs,
     )

@@ -13,6 +13,7 @@ with warnings.catch_warnings():
     warnings.simplefilter('ignore')
     import litellm
 
+from cachetools import LRUCache, cached
 from litellm import ChatCompletionMessageToolCall, ModelInfo, PromptTokensDetails
 from litellm import Message as LiteLLMMessage
 from litellm import completion as litellm_completion
@@ -111,6 +112,26 @@ MODELS_WITH_TEMPERATURE_DEFAULT_AS_1 = [
     'gpt-4.1',
     'o3',
 ]
+
+
+@cached(LRUCache(maxsize=100))
+def get_all_model_info(base_url: str, api_key: str | None) -> list[dict[str, Any]]:
+    if not base_url:
+        return []
+    if not base_url.startswith(('http://', 'https://')):
+        base_url = 'http://' + base_url
+
+    with httpx.Client() as client:
+        response = client.get(
+            f'{base_url}/v1/model/info',
+            headers={'Authorization': f'Bearer {api_key}'},
+        )
+
+    resp_json = response.json()
+    if 'data' not in resp_json:
+        logger.error(f'Error getting model info from LiteLLM proxy: {resp_json}')
+    all_model_info = resp_json.get('data', [])
+    return all_model_info
 
 
 class LLM(RetryMixin, DebugMixin):
@@ -471,23 +492,10 @@ class LLM(RetryMixin, DebugMixin):
             # IF we are using LiteLLM proxy, get model info from LiteLLM proxy
             # GET {base_url}/v1/model/info with litellm_model_id as path param
             base_url = self.config.base_url.strip() if self.config.base_url else ''
-            if not base_url.startswith(('http://', 'https://')):
-                base_url = 'http://' + base_url
-
-            with httpx.Client() as client:
-                response = client.get(
-                    f'{base_url}/v1/model/info',
-                    headers={
-                        'Authorization': f'Bearer {self.config.api_key.get_secret_value() if self.config.api_key else None}'
-                    },
-                )
-
-            resp_json = response.json()
-            if 'data' not in resp_json:
-                logger.error(
-                    f'Error getting model info from LiteLLM proxy: {resp_json}'
-                )
-            all_model_info = resp_json.get('data', [])
+            api_key = (
+                self.config.api_key.get_secret_value() if self.config.api_key else None
+            )
+            all_model_info = get_all_model_info(base_url=base_url, api_key=api_key)
             current_model_info = next(
                 (
                     info

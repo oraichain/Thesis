@@ -133,12 +133,13 @@ class Runtime(FileEditRuntimeMixin):
         self.sid = sid
         self.event_stream = event_stream
         self.mnemonic = mnemonic
-        self.event_stream.subscribe(
-            EventStreamSubscriber.RUNTIME,
-            self.on_event,
-            self.sid,
-            callback_max_workers=callback_max_workers,
-        )
+        if callback_max_workers > 0:
+            self.event_stream.subscribe(
+                EventStreamSubscriber.RUNTIME,
+                self.on_event,
+                self.sid,
+                callback_max_workers=callback_max_workers,
+            )
         self.plugins = (
             copy.deepcopy(plugins) if plugins is not None and len(plugins) > 0 else []
         )

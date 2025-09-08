@@ -9,8 +9,14 @@ import hashlib
 from typing import Any, Dict, Optional
 
 import redis
+from opentelemetry import trace
+
+from openhands.utils.messaging_tracing import inject_trace_context, start_producer_span
 
 from .base import BasePublisher
+
+trace_provider = trace.get_tracer_provider()
+tracer = trace_provider.get_tracer(__name__)
 
 
 class RedisPublisher(BasePublisher):
@@ -30,6 +36,7 @@ class RedisPublisher(BasePublisher):
         redis_password: Optional[str] = None,
         stream_name_template: str = 'conversation_partition_{}',
         num_partitions: int = 4,
+        max_messages_per_partitions: int = 1000,
     ):
         """
         Initialize Redis publisher.
@@ -42,6 +49,7 @@ class RedisPublisher(BasePublisher):
             redis_password: Redis password (if required)
             stream_name_template: Template for stream names (must contain {})
             num_partitions: Number of partitions to distribute messages across
+            max_messages_per_partitions: Maximum number of messages per partition
         """
         super().__init__(publisher_name=publisher_name)
 
@@ -51,6 +59,7 @@ class RedisPublisher(BasePublisher):
         self.redis_password = redis_password
         self.stream_name_template = stream_name_template
         self.num_partitions = num_partitions
+        self.max_messages_per_partitions = max_messages_per_partitions
 
         self.redis_client: Optional[redis.Redis] = None
 
@@ -128,19 +137,46 @@ class RedisPublisher(BasePublisher):
         partition = self.get_partition(key)
         stream_name = self.get_stream_name(partition)
 
-        # Prepare the message with partition info for Redis
-        message = self.prepare_message(key, data)
-        message['partition'] = str(
-            partition
-        )  # Add partition info for debugging/tracking
+        # Start producer span with tracing utilities
+        with start_producer_span(
+            'redis-publish-message',
+            messaging_system='redis',
+            destination=stream_name,
+            message_id=key,
+            additional_attributes={
+                'redis.partition': partition,
+                'messaging.destination_kind': 'stream',
+            },
+        ) as span:
+            if self.max_messages_per_partitions:
+                if (
+                    self.redis_client.xlen(stream_name)
+                    >= self.max_messages_per_partitions
+                ):
+                    self.redis_client.xtrim(
+                        stream_name,
+                        maxlen=int(self.max_messages_per_partitions / 2),
+                        approximate=True,
+                    )
 
-        try:
-            # Add message to the partition-specific stream
-            message_id = self.redis_client.xadd(stream_name, message)
-            return message_id
+            # Prepare the message with partition info for Redis
+            message = self.prepare_message(key, data)
+            message['partition'] = str(
+                partition
+            )  # Add partition info for debugging/tracking
 
-        except Exception as e:
-            raise RuntimeError(f'Failed to publish message to Redis: {e}')
+            # Inject trace context into the message
+            message = inject_trace_context(message)
+
+            try:
+                # Add message to the partition-specific stream
+                message_id = self.redis_client.xadd(stream_name, message)
+                span.set_attribute('messaging.redis.message_id', message_id)
+                return message_id
+
+            except Exception as e:
+                span.record_exception(e)
+                raise RuntimeError(f'Failed to publish message to Redis: {e}')
 
     def get_stream_info(self, partition: int) -> Dict[str, Any]:
         """
@@ -200,3 +236,38 @@ class RedisPublisher(BasePublisher):
         except Exception as e:
             print(f'Error deleting stream {stream_name}: {e}')
             return False
+
+
+def create_redis_publisher(
+    publisher_name: str,
+    redis_host: str = 'localhost',
+    redis_port: int = 6379,
+    redis_db: int = 0,
+    redis_password: Optional[str] = None,
+    num_partitions: int = 4,
+    **kwargs,
+) -> RedisPublisher:
+    """
+    Factory function to create a RedisPublisher instance.
+
+    Args:
+        publisher_name: Unique name for this publisher instance
+        redis_host: Redis server host
+        redis_port: Redis server port
+        redis_db: Redis database number
+        redis_password: Redis password (if required)
+        num_partitions: Number of partitions to distribute messages across
+        **kwargs: Additional arguments passed to RedisPublisher constructor
+
+    Returns:
+        Configured RedisPublisher instance
+    """
+    return RedisPublisher(
+        publisher_name=publisher_name,
+        redis_host=redis_host,
+        redis_port=redis_port,
+        redis_db=redis_db,
+        redis_password=redis_password,
+        num_partitions=num_partitions,
+        **kwargs,
+    )

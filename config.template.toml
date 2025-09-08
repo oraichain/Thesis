@@ -439,3 +439,4 @@ enable_streaming = true
 # queue_db = 0
 # queue_password = ""
 # queue_num_partitions = 4
+# queue_max_messages_per_partitions = 1000

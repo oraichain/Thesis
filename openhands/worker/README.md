@@ -54,6 +54,55 @@ consumer = KafkaConsumer(
 consumer.run()  # Start consuming messages
 ```
 
+### Conversation Consumer
+
+The `ConversationConsumer` is a specialized consumer designed specifically for processing conversation creation events in multi-worker mode. **Note:** This consumer has been moved to the server package.
+
+```python
+from openhands.server.conversation_consumer import ConversationConsumer, create_conversation_consumer
+
+# Using the class directly
+consumer = ConversationConsumer(
+    consumer_name="conversation_worker_1",
+    redis_host="localhost",
+    redis_port=6379,
+    num_partitions=4
+)
+
+# Using the factory function
+consumer = create_conversation_consumer(
+    consumer_name="conversation_worker_1",
+    redis_host="localhost",
+    redis_port=6379,
+    num_partitions=4
+)
+
+consumer.run()  # Start consuming conversation creation events
+```
+
+The ConversationConsumer automatically:
+- Listens for conversation creation events published to the message queue
+- Reconstructs conversation initialization data from the message
+- Uses the conversation manager to start conversations
+- Handles errors and provides comprehensive logging
+
+#### Command Line Usage
+
+The ConversationConsumer can also be run as a standalone script:
+
+```bash
+# Basic usage with default settings
+python -m openhands.server.conversation_consumer
+
+# With custom Redis configuration
+python -m openhands.server.conversation_consumer \
+    --consumer-name "worker_001" \
+    --redis-host "redis.example.com" \
+    --redis-port 6380 \
+    --redis-db 1 \
+    --num-partitions 8
+```
+
 ## Custom Consumer Implementation
 
 To implement a custom consumer for a new messaging backend:

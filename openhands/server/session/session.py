@@ -83,6 +83,9 @@ class Session:
         self.agent_session.event_stream.subscribe(
             EventStreamSubscriber.SERVER, self.on_event, self.sid
         )
+        print(
+            f'Session: event_stream {id(self.agent_session.event_stream)} subscribers: {self.agent_session.event_stream._subscribers}'
+        )
         # Copying this means that when we update variables they are not applied to the shared global configuration!
         self.config = deepcopy(config)
         self.loop = asyncio.get_event_loop()
@@ -382,6 +385,7 @@ class Session:
         await self._send(data)
 
     async def _send(self, data: dict[str, object]) -> bool:
+        print('data', data)
         try:
             if not self.is_alive:
                 return False

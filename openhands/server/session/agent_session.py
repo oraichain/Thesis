@@ -310,7 +310,6 @@ class AgentSession:
         Return True on successfully connected, False if could not connect.
         Raises if already created, possibly in other situations.
         """
-
         if self.runtime is not None:
             raise RuntimeError('Runtime already created')
 
@@ -360,7 +359,7 @@ class AgentSession:
         # This is to give the websocket a second to connect, so that
         # the status messages make it through to the frontend.
         # We should find a better way to plumb status messages through.
-        await asyncio.sleep(0.1)
+        # await asyncio.sleep(0.1)
         try:
             start_time = time.time()
             await self.runtime.connect()

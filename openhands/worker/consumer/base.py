@@ -8,7 +8,7 @@ This module provides the abstract base class for different types of consumers
 import abc
 import signal
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 class BaseConsumer(abc.ABC):
@@ -21,7 +21,12 @@ class BaseConsumer(abc.ABC):
     """
 
     def __init__(
-        self, consumer_name: str, group_name: str, num_partitions: Optional[int] = None
+        self,
+        consumer_name: str,
+        group_name: str = '',
+        num_partitions: Optional[int] = None,
+        message_processor: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
+        read_from_start: bool = False,
     ):
         """
         Initialize the base consumer.
@@ -30,10 +35,17 @@ class BaseConsumer(abc.ABC):
             consumer_name: Unique name for this consumer instance
             group_name: Name of the consumer group
             num_partitions: Number of partitions to use (optional, not needed for Kafka)
+            message_processor: Optional callback function for processing messages.
+                           If provided, this will be called instead of the default process_message implementation.
+                           Signature: (message_id: str, key: str, message_data: Dict[str, Any]) -> None
+            read_from_start: If True, consumer will read messages from the beginning of the stream.
+                           If False (default), consumer will only read new messages.
         """
         self.consumer_name = consumer_name
         self.group_name = group_name
         self.num_partitions = num_partitions
+        self.message_processor = message_processor
+        self.read_from_start = read_from_start
 
         self.assigned_partitions: List[int] = []
         self.is_running = False
@@ -119,6 +131,7 @@ class BaseConsumer(abc.ABC):
     def start(self) -> None:
         """Start the consumer."""
         print(f'🚀 Starting consumer: {self.consumer_name}')
+        self.is_running = True
 
         # Connect to messaging backend
         self.connect()
@@ -129,7 +142,6 @@ class BaseConsumer(abc.ABC):
         # Setup consumer (backend-specific setup)
         self.setup_consumer()
 
-        self.is_running = True
         print(f'Consumer {self.consumer_name} started successfully')
 
     def stop(self) -> None:

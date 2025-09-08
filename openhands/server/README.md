@@ -1,182 +1,249 @@
-# OpenHands Server
+# OpenHands Server - Distributed Conversation Processing
 
-This is a WebSocket server that executes tasks using an agent.
+This document describes the distributed architecture for conversation processing in OpenHands when running in multi-worker mode.
 
-## Recommended Prerequisites
+## Architecture Overview
 
-- [Initialize the frontend code](../../frontend/README.md)
-- Install Python 3.12 (`brew install python` for those using homebrew)
-- Install pipx: (`brew install pipx` followed by `pipx ensurepath`)
-- Install poetry: (`pipx install poetry`)
+The distributed architecture separates the API layer (handling client connections) from the worker layer (processing conversations) using a message queue system. This enables horizontal scaling and better resource utilization.
 
-## Install
+### Components
 
-First build a distribution of the frontend code (From the project root directory):
+#### 1. API Server
+- **Maintains conversation manager** (but doesn't process controller)
+- **Maintains API event stream** for sending data to clients
+- **Publishes NewConversationEvent** to message queue when new conversations are created
+- **Runs API Consumer** to listen for ProcessConversationEvent and forward to API event stream
 
-```sh
-cd frontend
-npm install
-npm run build
-cd ..
+#### 2. Worker
+- **Runs Conversation Consumer** that listens for NewConversationEvent
+- **Processes conversations** using conversation manager and controller
+- **Maintains Worker Event Stream** for conversation processing
+- **Publishes ProcessConversationEvent** to message queue as conversation progresses
+- **Event Forwarder** listens to Worker Event Stream and publishes updates
+
+#### 3. Message Queue
+- **Redis Streams** for reliable message queuing
+- **Partitioning** for scalability across multiple workers
+- **Consumer Groups** for load balancing
+
+## Message Types
+
+### NewConversationEvent
+**Published by:** API Server
+**Consumed by:** Worker Conversation Consumer
+```python
+{
+    "conversation_id": "conv_123",
+    "event_type": "new_conversation",
+    "conversation_init_data": {...},
+    "user_id": "user_123",
+    "initial_user_msg": "Hello",
+    # ... other conversation parameters
+}
 ```
 
-Next run `poetry shell` (So you don't have to repeat `poetry run`)
-
-## Start the Server
-
-```sh
-uvicorn openhands.server.listen:app --reload --port 3000
+### ProcessConversationEvent
+**Published by:** Worker
+**Consumed by:** API Server
+```python
+{
+    "conversation_id": "conv_123",
+    "event_type": "process_conversation",
+    "event_data": {...},
+    "source": "worker_001",
+    "status": "processing",
+    # ... progress information
+}
 ```
 
-## Test the Server
-
-You can use [`websocat`](https://github.com/vi/websocat) to test the server.
-
-```sh
-websocat ws://127.0.0.1:3000/ws
-{"action": "start", "args": {"task": "write a bash script that prints hello"}}
+### ConversationCompleteEvent
+**Published by:** Worker
+**Consumed by:** API Server
+```python
+{
+    "conversation_id": "conv_123",
+    "event_type": "conversation_complete",
+    "success": true,
+    "final_result": "...",
+    "processing_time": 15.5,
+    "total_tokens": 1250
+}
 ```
 
-## Supported Environment Variables
-
-```sh
-LLM_API_KEY=sk-... # Your Anthropic API Key
-LLM_MODEL=claude-3-5-sonnet-20241022 # Default model for the agent to use
-WORKSPACE_BASE=/path/to/your/workspace # Default absolute path to workspace
+### ConversationErrorEvent
+**Published by:** Worker
+**Consumed by:** API Server
+```python
+{
+    "conversation_id": "conv_123",
+    "event_type": "conversation_error",
+    "error_type": "processing_error",
+    "error_message": "Failed to process conversation",
+    "recoverable": false
+}
 ```
 
-## API Schema
+## Event Flow
 
-There are two types of messages that can be sent to, or received from, the server:
+### 1. Conversation Creation
+```
+Client Request → API Server → Publish NewConversationEvent → Worker Consumer
+```
 
-* Actions
-* Observations
+### 2. Conversation Processing
+```
+Worker Consumer → Start Conversation → Worker Event Stream → Event Forwarder → Publish ProcessConversationEvent → API Consumer → API Event Stream → Client
+```
 
-### Actions
+### 3. Conversation Completion
+```
+Worker → Publish ConversationCompleteEvent → API Consumer → API Event Stream → Client
+```
 
-An action has three parts:
+### 4. Error Handling
+```
+Worker → Publish ConversationErrorEvent → API Consumer → API Event Stream → Client
+```
 
-* `action`: The action to be taken
-* `args`: The arguments for the action
-* `message`: A friendly message that can be put in the chat log
+## Usage
 
-There are several kinds of actions. Their arguments are listed below.
-This list may grow over time.
+### Running API Server with Multi-Worker Support
 
-* `initialize` - initializes the agent. Only sent by client.
-  * `model` - the name of the model to use
-  * `directory` - the path to the workspace
-  * `agent_cls` - the class of the agent to use
-* `start` - starts a new development task. Only sent by the client.
-  * `task` - the task to start
-* `read` - reads the content of a file.
-  * `path` - the path of the file to read
-* `write` - writes the content to a file.
-  * `path` - the path of the file to write
-  * `content` - the content to write to the file
-* `run` - runs a command.
-  * `command` - the command to run
-* `browse` - opens a web page.
-  * `url` - the URL to open
-* `think` - Allows the agent to make a plan, set a goal, or record thoughts
-  * `thought` - the thought to record
-* `finish` - agent signals that the task is completed
+```bash
+# Set worker mode to multi-worker
+export WORKER_MODE=multi_worker
+export WORKER_QUEUE_HOST=localhost
+export WORKER_QUEUE_PORT=6379
 
-### Observations
+# Run API server
+python -m openhands.server.app
+```
 
-An observation has four parts:
+### Running Workers
 
-* `observation`: The observation type
-* `content`: A string representing the observed data
-* `extras`: additional structured data
-* `message`: A friendly message that can be put in the chat log
+```bash
+# Run conversation consumer worker
+python -m openhands.server.conversation_consumer
+```
 
-There are several kinds of observations. Their extras are listed below.
-This list may grow over time.
+### Running API Consumer Service
 
-* `read` - the content of a file
-  * `path` - the path of the file read
-* `browse` - the HTML content of a url
-  * `url` - the URL opened
-* `run` - the output of a command
-  * `command` - the command run
-  * `exit_code` - the exit code of the command
-* `chat` - a message from the user
+The API consumer service runs automatically as a background thread within the API server process when in multi-worker mode:
 
-## Server Components
+```bash
+# Set multi-worker mode
+export WORKER_MODE=multi_worker
 
-The following section describes the server-side components of the OpenHands project.
+# Start API server - API consumer service starts automatically as background thread
+python -m openhands.server.app
+```
 
-### 1. session/session.py
+**Key Benefits:**
+- **Single Process**: No need to manage separate consumer processes
+- **Resource Efficiency**: Shared memory and connection pools
+- **Tight Integration**: Direct access to server's conversation management
+- **Automatic Lifecycle**: Starts and stops with the API server
+- **Thread Safety**: Proper synchronization with server's event loop
 
-The `session.py` file defines the `Session` class, which represents a WebSocket session with a client. Key features include:
+## Architecture Details
 
-- Handling WebSocket connections and disconnections
-- Initializing and managing the agent session
-- Dispatching events between the client and the agent
-- Sending messages and errors to the client
+### Thread-Based API Consumer Service
 
-### 2. session/agent_session.py
+In the recommended setup, the API consumer runs as a background thread within the same process as the API server. This provides several advantages:
 
-The `agent_session.py` file contains the `AgentSession` class, which manages the lifecycle of an agent within a session. Key features include:
+#### Benefits
+- **Simplified Deployment**: No need to manage separate processes or containers
+- **Resource Efficiency**: Shared memory, connection pools, and context
+- **Tight Integration**: Direct access to server's conversation management
+- **Better Observability**: All logs and metrics in one place
+- **Fault Isolation**: If the API consumer thread fails, it doesn't bring down the server
 
-- Creating and managing the runtime environment
-- Initializing the agent controller
-- Handling security analysis
-- Managing the event stream
+#### How It Works
+1. **Server Startup**: When the API server starts in multi-worker mode, it automatically creates and starts the API consumer service
+2. **Background Thread**: The consumer runs in a separate thread, listening for messages without blocking the main server
+3. **Event Forwarding**: When worker events are received, they're forwarded to the appropriate conversation's event stream
+4. **Graceful Shutdown**: When the server shuts down, the consumer thread is cleanly stopped
 
-### 3. session/conversation_manager/conversation_manager.py
+#### Thread Safety
+- The consumer thread uses message polling with timeouts to avoid blocking
+- Event forwarding is scheduled as async tasks in the server's event loop
+- Proper synchronization ensures thread-safe access to shared resources
 
-The `conversation_manager.py` file defines the `ConversationManager` class, which is responsible for managing multiple client conversations. Key features include:
+## Configuration
 
-- Adding and restarting conversations
-- Sending messages to specific conversations
-- Cleaning up inactive conversations
+### Worker Configuration
+```toml
+[worker]
+mode = "multi_worker"
+queue_type = "redis"
+queue_host = "localhost"
+queue_port = 6379
+queue_db = 0
+queue_num_partitions = 4
+```
 
-### 4. listen.py
+### Environment Variables
+- `WORKER_MODE`: `standalone` or `multi_worker`
+- `WORKER_QUEUE_HOST`: Redis host
+- `WORKER_QUEUE_PORT`: Redis port
+- `WORKER_QUEUE_DB`: Redis database number
+- `WORKER_QUEUE_PASSWORD`: Redis password (optional)
 
-The `listen.py` file is the main server file that sets up the FastAPI application and defines various API endpoints. Key features include:
+## Scaling
 
-- Setting up CORS middleware
-- Handling WebSocket connections
-- Managing file uploads
-- Providing API endpoints for agent interactions, file operations, and security analysis
-- Serving static files for the frontend
+### Horizontal Scaling
+- **Multiple Workers**: Run multiple conversation consumers for load balancing
+- **Multiple API Servers**: Run multiple API servers with different consumer groups
+- **Partitioning**: Redis streams are partitioned for better performance
 
-## Workflow Description
+### Consumer Groups
+- **conversation_workers**: Worker consumers processing NewConversationEvent
+- **api_consumers**: API consumers processing ProcessConversationEvent
 
-1. **Server Initialization**:
-   - The FastAPI application is created and configured in `listen.py`.
-   - CORS middleware and static file serving are set up.
-   - The `ConversationManager` is initialized.
+## Error Handling
 
-2. **Client Connection**:
-   - When a client connects via WebSocket, a new `Session` is created or an existing one is restarted.
-   - The `Session` initializes an `AgentSession`, which sets up the runtime environment and agent controller.
+### Retry Logic
+- Failed message processing can be retried
+- Dead letter queues for persistent failures
+- Exponential backoff for recoverable errors
 
-3. **Agent Initialization**:
-   - The client sends an initialization request.
-   - The server creates and configures the agent based on the provided parameters.
-   - The runtime environment is set up, and the agent controller is initialized.
+### Monitoring
+- Conversation processing metrics
+- Queue depth monitoring
+- Error rate tracking
+- Worker health monitoring
 
-4. **Event Handling**:
-   - The `Session` manages the event stream between the client and the agent.
-   - Events from the client are dispatched to the agent.
-   - Observations from the agent are sent back to the client.
+## Benefits
 
-5. **File Operations**:
-   - The server handles file uploads, ensuring they meet size and type restrictions.
-   - File read and write operations are performed through the runtime environment.
+1. **Scalability**: Separate API and worker layers allow independent scaling
+2. **Resource Efficiency**: Workers can be optimized for processing, API servers for client handling
+3. **Reliability**: Message queue provides decoupling and fault tolerance
+4. **Observability**: Clear separation of concerns for monitoring and debugging
+5. **Flexibility**: Easy to add new worker types or API consumers
 
-6. **Security Analysis**:
-   - If configured, a security analyzer is initialized for each session.
-   - Security-related API requests are forwarded to the security analyzer.
+## Development
 
-7. **Session Management**:
-   - The `ConversationManager` periodically cleans up inactive sessions.
-   - It also handles sending messages to specific sessions when needed.
+### Adding New Event Types
+1. Define event class in `openhands/core/events/conversation_events.py`
+2. Add factory function for creating the event
+3. Update consumer `process_message` methods to handle the new event type
+4. Update documentation
 
-8. **API Endpoints**:
-   - Various API endpoints are provided for agent interactions, file operations, and retrieving configuration defaults.
+### Testing
+- Unit tests for individual components
+- Integration tests for event flow
+- Load testing for scalability validation
 
-This server architecture allows for managing multiple client sessions, each with its own agent instance, runtime environment, and security analyzer. The event-driven design facilitates real-time communication between clients and agents, while the modular structure allows for easy extension and maintenance of different components.
+## Troubleshooting
+
+### Common Issues
+
+1. **Messages not being consumed**: Check Redis connection and consumer group status
+2. **Events not reaching clients**: Verify API consumer is running and connected
+3. **Worker not processing**: Check NewConversationEvent publishing and worker logs
+4. **Performance issues**: Monitor queue depth and add more workers/partitions
+
+### Debugging
+- Enable debug logging for detailed event flow
+- Use Redis CLI to inspect queue contents
+- Monitor consumer lag and pending messages

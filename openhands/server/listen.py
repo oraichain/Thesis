@@ -9,8 +9,10 @@ load_dotenv()
 if os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT'):
     # httpx instrumentation need start before any httpx client is created
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    from opentelemetry.instrumentation.redis import RedisInstrumentor
 
     HTTPXClientInstrumentor().instrument()
+    RedisInstrumentor().instrument()
 
 from openhands.server.app import app as base_app  # noqa
 from openhands.server.listen_socket import sio  # noqa

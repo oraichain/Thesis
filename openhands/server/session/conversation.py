@@ -64,6 +64,10 @@ class Conversation:
             await self.runtime.connect()
 
     async def disconnect(self) -> None:
+        print(
+            'Conversation: disconnect with _attach_to_existing',
+            self._attach_to_existing,
+        )
         if self._attach_to_existing:
             return
         if self.event_stream:

@@ -12,7 +12,8 @@ from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema.agent import AgentState
 from openhands.events.action import MessageAction
 from openhands.events.event_store import EventStore
-from openhands.events.stream import EventStreamSubscriber, session_exists
+from openhands.events.stream import EventStream, EventStreamSubscriber, session_exists
+from openhands.runtime import get_runtime_cls
 from openhands.server.config.server_config import ServerConfig
 from openhands.server.modules.conversation import conversation_module
 from openhands.server.monitoring import MonitoringListener
@@ -75,6 +76,12 @@ class StandaloneConversationManager(ConversationManager):
             self._cleanup_task.cancel()
             self._cleanup_task = None
 
+    def get_event_stream(self, sid: str) -> EventStream | None:
+        session = self._local_agent_loops_by_sid.get(sid)
+        if session:
+            return session.agent_session.event_stream
+        return None
+
     async def attach_to_conversation(
         self, sid: str, user_id: str | None = None
     ) -> Conversation | None:
@@ -117,6 +124,16 @@ class StandaloneConversationManager(ConversationManager):
             if session:
                 event_stream = session.agent_session.event_stream
                 runtime = session.agent_session.runtime
+                if event_stream and not runtime:
+                    runtime_cls = get_runtime_cls(self.config.runtime)
+                    runtime = runtime_cls(
+                        config=self.config,
+                        event_stream=event_stream,
+                        sid=sid,
+                        attach_to_existing=True,
+                        headless_mode=False,
+                        callback_max_workers=0,
+                    )
 
             # Create new conversation if none exists
             c = Conversation(
@@ -162,6 +179,7 @@ class StandaloneConversationManager(ConversationManager):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
+        is_start_agent: bool = True,
     ) -> EventStore:
         logger.info(
             f'join_conversation:{sid}:{connection_id}',
@@ -187,6 +205,7 @@ class StandaloneConversationManager(ConversationManager):
             raw_followup_conversation_id=raw_followup_conversation_id,
             space_section_id=space_section_id,
             output_config=output_config,
+            is_start_agent=is_start_agent,
         )
         if not event_stream:
             logger.error(
@@ -270,7 +289,10 @@ class StandaloneConversationManager(ConversationManager):
         return store
 
     async def get_running_agent_loops(
-        self, user_id: str | None = None, filter_to_sids: set[str] | None = None
+        self,
+        user_id: str | None = None,
+        filter_to_sids: set[str] | None = None,
+        filter_to_states: list[AgentState] | None = None,
     ) -> set[str]:
         """Get the running session ids in chronological order (oldest first).
 
@@ -288,7 +310,12 @@ class StandaloneConversationManager(ConversationManager):
             items = (item for item in items if item[0] in filter_to_sids)
         if user_id:
             items = (item for item in items if item[1].user_id == user_id)
-
+        if filter_to_states is not None:
+            items = (
+                item
+                for item in items
+                if item[1].agent_session.get_state() in filter_to_states
+            )
         sids = {sid for sid, _ in items}
         return sids
 
@@ -328,6 +355,7 @@ class StandaloneConversationManager(ConversationManager):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
+        is_start_agent: bool = True,
     ) -> EventStore:
         logger.info(f'maybe_start_agent_loop:{sid}', extra={'session_id': sid})
         session: Session | None = None
@@ -372,31 +400,35 @@ class StandaloneConversationManager(ConversationManager):
                 space_section_id=space_section_id,
             )
             self._local_agent_loops_by_sid[sid] = session
-            asyncio.create_task(
-                session.initialize_agent(
-                    settings,
-                    initial_user_msg,
-                    replay_json,
-                    mnemonic=mnemonic,
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    mcp_disable=mcp_disable,
-                    knowledge_base=knowledge_base,
-                    research_mode=research_mode,
-                    output_config=output_config,
+
+            # in worker mode, we not start the agent directly
+            # but still need event stream to update data for client.
+            if is_start_agent:
+                asyncio.create_task(
+                    session.initialize_agent(
+                        settings,
+                        initial_user_msg,
+                        replay_json,
+                        mnemonic=mnemonic,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        mcp_disable=mcp_disable,
+                        knowledge_base=knowledge_base,
+                        research_mode=research_mode,
+                        output_config=output_config,
+                    )
                 )
-            )
-            # This does not get added when resuming an existing conversation
-            try:
-                session.agent_session.event_stream.subscribe(
-                    EventStreamSubscriber.SERVER,
-                    self._create_conversation_update_callback(
-                        user_id, github_user_id, sid, settings
-                    ),
-                    UPDATED_AT_CALLBACK_ID,
-                )
-            except ValueError:
-                pass  # Already subscribed - take no action
+                # This does not get added when resuming an existing conversation
+                try:
+                    session.agent_session.event_stream.subscribe(
+                        EventStreamSubscriber.SERVER,
+                        self._create_conversation_update_callback(
+                            user_id, github_user_id, sid, settings
+                        ),
+                        UPDATED_AT_CALLBACK_ID,
+                    )
+                except ValueError:
+                    pass  # Already subscribed - take no action
 
         event_store = await self._get_event_store(sid, user_id)
         if not event_store:
@@ -443,6 +475,23 @@ class StandaloneConversationManager(ConversationManager):
             return
 
         raise RuntimeError(f'no_connected_session:{connection_id}:{sid}')
+
+    async def send_to_event_stream_by_sid(self, sid: str, data: dict):
+        session = self._local_agent_loops_by_sid.get(sid)
+        if session:
+            await session.dispatch(data)
+            return
+
+        raise RuntimeError(f'no_connected_session:{sid}')
+
+    async def get_session_from_connection_id(
+        self, connection_id: str
+    ) -> Session | None:
+        sid = self._local_connection_id_to_session_id.get(connection_id)
+        if not sid:
+            raise RuntimeError(f'no_connected_session:{connection_id}')
+
+        return self._local_agent_loops_by_sid.get(sid)
 
     async def disconnect_from_session(self, connection_id: str):
         sid = self._local_connection_id_to_session_id.pop(connection_id, None)

@@ -75,16 +75,6 @@ class BasePublisher(abc.ABC):
         signal.signal(signal.SIGINT, handler)
         signal.signal(signal.SIGTERM, handler)
 
-    @abc.abstractmethod
-    def setup(self) -> None:
-        """Setup method that can be overridden by subclasses for custom setup logic."""
-        pass
-
-    @abc.abstractmethod
-    def cleanup(self) -> None:
-        """Cleanup method that can be overridden by subclasses for custom cleanup logic."""
-        pass
-
     def serialize_data(self, data: Dict[str, Any]) -> str:
         """
         Serialize message data to JSON string.
@@ -119,9 +109,6 @@ class BasePublisher(abc.ABC):
         # Connect to messaging backend
         self.connect()
 
-        # Custom setup hook
-        self.setup()
-
         # Set running state atomically
         self._running_event.set()
         print(f'Publisher {self.publisher_name} started successfully')
@@ -132,12 +119,6 @@ class BasePublisher(abc.ABC):
 
         # Clear running state atomically
         self._running_event.clear()
-
-        try:
-            # Custom cleanup hook
-            self.cleanup()
-        except Exception as e:
-            print(f'Error in custom cleanup: {e}')
 
         try:
             self.disconnect()
