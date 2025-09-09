@@ -253,7 +253,7 @@ class AttachConversationMiddleware(SessionMiddlewareInterface):
     def __init__(self, app):
         self.app = app
 
-    def _should_attach(self, request) -> bool:
+    async def _should_attach(self, request: Request) -> bool:
         """
         Determine if the middleware should attach a session for the given request.
         """
@@ -272,6 +272,11 @@ class AttachConversationMiddleware(SessionMiddlewareInterface):
             path_parts = request.url.path.split('/')
             if len(path_parts) >= 6:
                 conversation_id = request.url.path.split('/')[5]
+            if request.method == 'POST':
+                request_body = await request.json()
+                conversation_id_from_body = request_body.get('conversation_id')
+                if conversation_id_from_body:
+                    conversation_id = conversation_id_from_body
         if not conversation_id:
             return False
 
@@ -304,7 +309,7 @@ class AttachConversationMiddleware(SessionMiddlewareInterface):
         )
 
     async def __call__(self, request: Request, call_next: Callable):
-        if not self._should_attach(request):
+        if not await self._should_attach(request):
             return await call_next(request)
 
         response = await self._attach_conversation(request)

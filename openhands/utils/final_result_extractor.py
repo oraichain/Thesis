@@ -157,7 +157,7 @@ def _reconstruct_final_file_content(events: list[Event]) -> str | None:
                     )
 
         if final_content and len(final_content.strip()) > 50:
-            logger.info(
+            logger.debug(
                 f'Reconstructed final content from {target_path} ({len(operations)} operations)'
             )
             return final_content
@@ -203,7 +203,7 @@ async def save_final_result_to_database(
                     )
                     return False
                 else:
-                    logger.info(
+                    logger.debug(
                         f'Successfully saved final result to database for conversation {conversation_id}'
                     )
                     return True
@@ -265,7 +265,7 @@ async def extract_final_result(
 
         # Try to reconstruct final file content first (prioritize edit events)
         if edit_events:
-            logger.info('Prioritizing edit events for final result extraction')
+            logger.debug('Prioritizing edit events for final result extraction')
             final_file_content = _reconstruct_final_file_content(events)
 
             if final_file_content:
@@ -308,7 +308,7 @@ async def extract_final_result(
                     f'Failed to save final result to database for conversation {conversation_id}'
                 )
 
-        logger.info(
+        logger.debug(
             f'Final result extracted: {final_result is not None}, conversation_id: {conversation_id}'
         )
         return final_result

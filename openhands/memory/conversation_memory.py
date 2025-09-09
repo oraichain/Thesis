@@ -29,6 +29,7 @@ from openhands.events.event import Event, RecallType
 from openhands.events.observation import (
     AgentCondensationObservation,
     AgentDelegateObservation,
+    AgentReadyObservation,
     AgentThinkObservation,
     BrowserOutputObservation,
     CmdOutputObservation,
@@ -646,6 +647,8 @@ class ConversationMemory:
         elif isinstance(obs, ReportVerificationObservation):
             return []
         elif isinstance(obs, CreditErrorObservation):
+            return []
+        elif isinstance(obs, AgentReadyObservation):
             return []
         else:
             # If an observation message is not returned, it will cause an error

@@ -72,6 +72,7 @@ from openhands.events.action.agent import (
 from openhands.events.event import Event
 from openhands.events.observation import (
     AgentDelegateObservation,
+    AgentReadyObservation,
     AgentStateChangedObservation,
     ErrorObservation,
     NullObservation,
@@ -127,6 +128,7 @@ class AgentController:
     _pending_action: Action | None = None
     _concurrent_pending_actions: set[int] = set()  # Track concurrent action IDs
     _closed: bool = False
+    _initialization_complete: bool = False
     filter_out: ClassVar[tuple[type[Event], ...]] = (
         NullAction,
         NullObservation,
@@ -495,6 +497,19 @@ class AgentController:
             self._rag_synced = True
         if self.state.agent_state == AgentState.RUNNING:
             self._rag_synced = False
+
+        if (
+            self.state.agent_state
+            in (AgentState.FINISHED, AgentState.AWAITING_USER_INPUT)
+            and not self._initialization_complete
+        ):
+            # emit ready signal so that the client can start sending actions
+            self._initialization_complete = True
+            ready_obs = AgentReadyObservation('')
+            self.event_stream.add_event(ready_obs, EventSource.AGENT)
+            self.log(
+                'debug', 'Agent initialization complete - ready to process actions'
+            )
 
     async def _handle_action(self, action: Action) -> None:
         """Handles an Action from the agent or delegate."""
@@ -1237,7 +1252,7 @@ class AgentController:
             )
 
             self.log(
-                'info',
+                'debug',
                 f'final_result: {final_result}, {self.id}',
             )
 

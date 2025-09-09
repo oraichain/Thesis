@@ -1,6 +1,7 @@
 import json
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from openhands.core.logger import openhands_logger as logger
@@ -20,6 +21,9 @@ from openhands.server.auth import (
 from openhands.server.data_models.conversation_info import ConversationDetailInfo
 from openhands.server.modules.conversation import conversation_module
 from openhands.server.modules.space import SpaceModule
+from openhands.server.routes.integration.join_conversation_client import (
+    SocketStreamClient,
+)
 from openhands.server.routes.manage_conversations import (
     InitSessionRequest,
     get_default_conversation_title,
@@ -198,3 +202,78 @@ def _handle_streaming_message(streaming_events: list[dict] | None) -> dict | Non
     last_event['message'] = ''.join([e['message'] for e in streaming_events]).strip()
     streaming_events = []
     return last_event
+
+
+class JoinConversationIntegrationRequest(BaseModel):
+    conversation_id: str | None = None
+    system_prompt: str | None = None
+    user_prompt: str | None = None
+    research_mode: str | None = None
+
+
+@conversation_router.post('/join-conversation')
+async def join_conversation(request: Request, data: JoinConversationIntegrationRequest):
+    """
+    Join an existing conversation given a conversation ID and an API key.
+    The user prompt is used as the next message sent to the LLM.
+    """
+
+    if (
+        not data.conversation_id
+        or not data.system_prompt
+        or not data.research_mode
+        or not data.user_prompt
+    ):
+        raise HTTPException(status_code=400, detail='Missing required fields')
+
+    authorization = request.headers.get('Authorization')
+    # Parse Bearer token from Authorization header
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(
+            status_code=401, detail='Authorization header with Bearer token is required'
+        )
+
+    jwt_token = authorization[7:]  # Remove "Bearer " prefix
+    if not jwt_token.strip():
+        raise HTTPException(status_code=401, detail='API key cannot be empty')
+
+    try:
+        client = SocketStreamClient()
+        await client.connect(
+            conversation_id=data.conversation_id,
+            jwt_token=jwt_token,
+            api_base_url='http://localhost:3000',  # TODO: make the port configurable
+            system_prompt=data.system_prompt,
+            research_mode=ResearchMode(data.research_mode),
+        )
+
+        async def stream_with_cancellation(
+            user_prompt: str, research_mode: ResearchMode
+        ):
+            """Stream wrapper that monitors client disconnection"""
+            async for chunk in client.stream(
+                user_prompt=user_prompt,
+                research_mode=research_mode,
+            ):
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    # Signal cancellation to client and cleanup
+                    client.cancel()
+                    break
+                yield chunk
+
+        return StreamingResponse(
+            stream_with_cancellation(
+                data.user_prompt, ResearchMode(data.research_mode)
+            ),
+            media_type='application/json',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Content-Type': 'text/event-stream',
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f'Failed to start streaming: {str(e)}'
+        )

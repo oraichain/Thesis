@@ -738,8 +738,8 @@ class CodeActAgent(Agent):
         params['tools'] = check_tools(params['tools'], self.llm.config)
         if self.enable_streaming:
             params['stream_options'] = {'include_usage': True}
-        logger.info(f'Messages: {messages}')
         last_message = messages[-1]
+        logger.info(f'Last message: {last_message}')
 
         response = None
         if (
