@@ -11,8 +11,6 @@ import sys
 
 import httpx
 
-from openhands.core.schema.research import ResearchMode
-
 
 class StreamingClient:
     def __init__(self, base_url: str = 'http://localhost:3000'):
@@ -86,7 +84,7 @@ class StreamingClient:
         api_key: str,
         system_prompt: str = '',
         user_prompt: str = '',
-        research_mode: ResearchMode = ResearchMode.DEEP_RESEARCH,
+        research_mode: str = 'deep_research',
     ):
         """
         Stream conversation responses from the FastAPI endpoint
@@ -95,7 +93,7 @@ class StreamingClient:
             'conversation_id': conversation_id,
             'system_prompt': system_prompt,
             'user_prompt': user_prompt,
-            'research_mode': research_mode.value,
+            'research_mode': research_mode,
         }
 
         endpoint = f'{self.base_url}/api/v1/integration/conversations/join-conversation'
@@ -189,7 +187,7 @@ async def main():
         'api_key': os.getenv('API_KEY'),
         'system_prompt': 'You are a helpful AI assistant specialized in software development. You are also a joke teller.',
         'user_prompt': 'Tell me a joke.',
-        'research_mode': ResearchMode.DEEP_RESEARCH,
+        'research_mode': 'deep_research',
     }
 
     # FastAPI server URL
