@@ -191,7 +191,9 @@ async def main():
 
     print('🚀 Starting FastAPI Streaming Client')
 
-    async with StreamingClient(os.getenv('API_BASE_URL')) as client:
+    async with StreamingClient(
+        os.getenv('API_BASE_URL') or 'http://localhost:3000'
+    ) as client:
         await client.stream_conversation(**config)
 
 

@@ -8,7 +8,26 @@ import socketio
 import socketio.exceptions
 
 from openhands.core.logger import openhands_logger as logger
+from openhands.core.schema.agent import AgentState
 from openhands.core.schema.research import ResearchMode
+
+
+def has_finished_processing_user_action(event: dict) -> bool:
+    """Handle different types of events from the stream"""
+    event_type = event.get('type', 'unknown')
+
+    if event_type == 'oh_event':
+        # This is the main socket.io event data
+        data = event.get('data', {})
+        if 'extras' in data and data['extras']:
+            extras = data['extras']
+            if 'agent_state' in extras:
+                if (
+                    extras['agent_state'] == AgentState.AWAITING_USER_INPUT
+                    or extras['agent_state'] == AgentState.FINISHED
+                ):
+                    return True
+    return False
 
 
 class SocketStreamClient:
@@ -214,6 +233,11 @@ class SocketStreamClient:
                         # Send complete event as JSON
                         event_json = json.dumps(event, cls=self.json_encoder)
                         yield event_json
+                        if has_finished_processing_user_action(event):
+                            logger.info(
+                                'Agent has finished processing user action, disconnecting'
+                            )
+                            break
                     else:
                         # This means we timed out
                         raise asyncio.TimeoutError()
