@@ -2,7 +2,7 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema.action import ActionType
@@ -36,34 +36,194 @@ from openhands.server.shared import (
 )
 from openhands.storage.data_models.conversation_status import ConversationStatus
 
-conversation_router = APIRouter(prefix='/conversations')
-chat_router = APIRouter(prefix='/chat_researchs')
-deep_research_router = APIRouter(prefix='/deep_researchs')
+
+# Response Models
+class ConversationCreateResponse(BaseModel):
+    status: str = Field(
+        description="Response status, always 'ok' for successful creation", example='ok'
+    )
+    conversation_id: str = Field(
+        description='Unique identifier for the created conversation',
+        example='conv_abc123def456',
+    )
+
+
+class ConversationErrorResponse(BaseModel):
+    status: str = Field(
+        description="Error status, always 'error' for failures", example='error'
+    )
+    message: str = Field(
+        description='Human-readable error message', example='Settings not found'
+    )
+    msg_id: str = Field(
+        description='Machine-readable error code for categorization',
+        example='CONFIGURATION$SETTINGS_NOT_FOUND',
+    )
+
+
+class FastAPIErrorResponse(BaseModel):
+    detail: str = Field(
+        description='Error details from FastAPI', example='Unauthorized'
+    )
+
+
+class ConversationEvent(BaseModel):
+    action: str = Field(description='Type of action/event', example='message')
+    source: str = Field(description='Source of the event (user/agent)', example='user')
+    message: str = Field(
+        description='Content of the message or action',
+        example='Please review this code',
+    )
+    timestamp: str = Field(
+        description='ISO timestamp when the event occurred',
+        example='2024-01-15T10:30:00Z',
+    )
+
+
+class ConversationDetailResponse(BaseModel):
+    conversation_id: str = Field(
+        description='Unique conversation identifier', example='conv_abc123def456'
+    )
+    title: str = Field(description='Conversation title', example='Code Review Session')
+    status: str = Field(description='Current conversation status', example='RUNNING')
+    created_at: str = Field(
+        description='ISO timestamp when conversation was created',
+        example='2024-01-15T10:30:00Z',
+    )
+    last_updated_at: str = Field(
+        description='ISO timestamp of last activity', example='2024-01-15T11:45:00Z'
+    )
+    selected_repository: str | None = Field(
+        description='Associated repository if any', example='user/project-repo'
+    )
+    research_mode: str | None = Field(
+        description='Research mode used in conversation', example='deep_research'
+    )
+    events: list[ConversationEvent] = Field(
+        description='List of conversation events/messages', default=[]
+    )
+    final_result: str | dict | None = Field(
+        description='Final result if conversation is completed', default=None
+    )
+
+
+conversation_router = APIRouter(
+    prefix='/conversations',
+    tags=['conversations'],
+    responses={
+        401: {'description': 'Authentication required'},
+        404: {'description': 'Resource not found'},
+        500: {'description': 'Internal server error'},
+    },
+)
+chat_router = APIRouter(
+    prefix='/chat_researchs',
+    tags=['conversations'],
+    responses={
+        401: {'description': 'Authentication required'},
+        500: {'description': 'Internal server error'},
+    },
+)
+deep_research_router = APIRouter(
+    prefix='/deep_researchs',
+    tags=['conversations'],
+    responses={
+        401: {'description': 'Authentication required'},
+        500: {'description': 'Internal server error'},
+    },
+)
 
 
 class CreateNewConversationIntegrationRequest(BaseModel):
-    initial_user_msg: str | None = None
-    research_mode: ResearchMode | None = None
-    space_id: int | None = None
-    space_section_id: int | None = None
-    thread_follow_up: int | None = None
-    followup_discover_id: str | None = None
-    mcp_disable: dict[str, bool] | None = None
-    system_prompt: str | None = None
+    initial_user_msg: str | None = Field(
+        None,
+        description='Initial message to start the conversation',
+        example="What's the new DeFi meta recently that I can ape in?",
+    )
+    research_mode: ResearchMode | None = Field(
+        None, description='Research mode for the conversation', example='deep_research'
+    )
+    space_id: int | None = Field(
+        None,
+        description='Your space ID. You can find it via your created space',
+        example=123,
+    )
+    space_section_id: int | None = Field(
+        None,
+        description='Your space section ID. You can find it via your created space',
+        example=456,
+    )
+    thread_follow_up: int | None = Field(
+        None, description='Thread ID for follow-up conversations', example=789
+    )
+    followup_discover_id: str | None = Field(
+        None,
+        description='Discovery ID for follow-up research',
+        example='discover_abc123',
+    )
+    mcp_disable: dict[str, bool] | None = Field(
+        None,
+        description='MCP tools to disable for this conversation',
+    )
+    system_prompt: str | None = Field(
+        None,
+        description='Custom system prompt to guide the AI behavior',
+        example="You are a DeFi gigachad who's always ahead of the new DeFi meta.",
+    )
 
 
 class CreateChatConversationIntegrationRequest(BaseModel):
-    initial_user_msg: str | None = None
-    system_prompt: str | None = None
+    initial_user_msg: str | None = Field(
+        None,
+        description='Initial message for the chat conversation',
+        example="Let's have a casual conversation about DeFi",
+    )
+    system_prompt: str | None = Field(
+        None,
+        description="System prompt to set the AI's behavior in chat mode",
+        example='You are a friendly AI assistant who explains complex topics simply',
+    )
 
 
 class CreateDeepResearchConversationIntegrationRequest(BaseModel):
-    initial_user_msg: str | None = None
-    mcp_disable: dict[str, bool] | None = None
-    system_prompt: str | None = None
+    initial_user_msg: str | None = Field(
+        None,
+        description='Initial research query to begin deep analysis',
+        example='Research the latest developments in DeFi',
+    )
+    mcp_disable: dict[str, bool] | None = Field(
+        None,
+        description='MCP tools to disable during deep research',
+    )
+    system_prompt: str | None = Field(
+        None,
+        description='System prompt for deep research mode behavior',
+        example='You are a thorough DeFi researcher who provides comprehensive analysis with citations',
+    )
 
 
-@conversation_router.post('', description='Create new conversation.')
+@conversation_router.post(
+    '',
+    summary='Create New Conversation',
+    description='Creates a new conversation with customizable research mode, system prompt, and space association. Supports follow-up threads and MCP tool configuration.',
+    response_description='Returns the newly created conversation details including conversation ID',
+    response_model=ConversationCreateResponse,
+    responses={
+        200: {
+            'description': 'Conversation created successfully',
+            'model': ConversationCreateResponse,
+        },
+        400: {
+            'description': 'Invalid request data or missing required fields',
+            'model': ConversationErrorResponse,
+        },
+        401: {
+            'description': 'Authentication token missing or invalid',
+            'model': ConversationErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
+    },
+)
 async def integration_new_conversation(
     request: Request, data: CreateNewConversationIntegrationRequest
 ):
@@ -86,7 +246,28 @@ async def integration_new_conversation(
     return new_conversation_result
 
 
-@chat_router.post('', description='Create new conversation in chat mode.')
+@chat_router.post(
+    '',
+    summary='Thesis.io chat mode with Multi Web Search tool enabled',
+    description='Creates a new conversation optimized for Fast Multi Web Search.',
+    response_description='Returns chat conversation details with conversation ID',
+    response_model=ConversationCreateResponse,
+    responses={
+        200: {
+            'description': 'Chat conversation created successfully',
+            'model': ConversationCreateResponse,
+        },
+        400: {
+            'description': 'Invalid chat request data',
+            'model': ConversationErrorResponse,
+        },
+        401: {
+            'description': 'Authentication required',
+            'model': ConversationErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
+    },
+)
 async def integration_new_chat_conversation(
     request: Request, data: CreateChatConversationIntegrationRequest
 ):
@@ -98,7 +279,26 @@ async def integration_new_chat_conversation(
 
 
 @deep_research_router.post(
-    '', description='Create new conversation in deep research mode.'
+    '',
+    summary='Thesis.io deep research mode with curated data and customized DeFi tools.',
+    description='Creates a conversation specifically for DeFi research tasks.',
+    response_description='Returns deep research conversation with enhanced capabilities',
+    response_model=ConversationCreateResponse,
+    responses={
+        200: {
+            'description': 'Deep research conversation created successfully',
+            'model': ConversationCreateResponse,
+        },
+        400: {
+            'description': 'Invalid deep research request parameters',
+            'model': ConversationErrorResponse,
+        },
+        401: {
+            'description': 'Authentication required for research access',
+            'model': ConversationErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
+    },
 )
 async def integration_new_deep_research_conversation(
     request: Request, data: CreateDeepResearchConversationIntegrationRequest
@@ -110,7 +310,28 @@ async def integration_new_deep_research_conversation(
     return await new_conversation(request, new_conversation_data)
 
 
-@conversation_router.get('/{conversation_id}')
+@conversation_router.get(
+    '/{conversation_id}',
+    summary='Get Conversation Details',
+    description='Retrieves comprehensive details for a specific conversation including metadata, event history, and current status. Returns full conversation context with all messages and interactions.',
+    response_description='Complete conversation information with events and metadata',
+    response_model=ConversationDetailResponse,
+    responses={
+        200: {
+            'description': 'Conversation details retrieved successfully',
+            'model': ConversationDetailResponse,
+        },
+        401: {
+            'description': 'Authentication required to access conversation',
+            'model': FastAPIErrorResponse,
+        },
+        404: {
+            'description': 'Conversation not found or access denied',
+            'model': FastAPIErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
+    },
+)
 async def integration_get_conversation(
     conversation_id: str, request: Request
 ) -> ConversationDetailInfo | None:
@@ -205,19 +426,108 @@ def _handle_streaming_message(streaming_events: list[dict] | None) -> dict | Non
 
 
 class JoinConversationIntegrationRequest(BaseModel):
-    conversation_id: str | None = None
-    system_prompt: str | None = None
-    user_prompt: str | None = None
-    research_mode: str | None = None
+    conversation_id: str | None = Field(
+        None,
+        description='ID of the existing conversation to join',
+        example='conv_abc123def456',
+    )
+    system_prompt: str | None = Field(
+        None,
+        description='System prompt to apply when joining the conversation',
+        example='Continue as an expert software architect',
+    )
+    user_prompt: str | None = Field(
+        None,
+        description='Message to send when joining the conversation',
+        example='Please review the code we discussed earlier',
+    )
+    research_mode: str | None = Field(
+        None,
+        description='Research mode to use in the conversation',
+        example='deep_research',
+    )
 
 
-@conversation_router.post('/join-conversation')
+@conversation_router.post(
+    '/join-conversation',
+    summary='Join Existing Conversation',
+    description='Join an existing conversation using conversation ID and API key authentication. Allows real-time participation in ongoing conversations with streaming responses. The user prompt becomes the next message sent to the AI.',
+    response_description='Streaming response with real-time conversation updates',
+    responses={
+        200: {
+            'description': 'Successfully joined conversation with streaming response',
+            'content': {
+                'application/json': {
+                    'schema': {
+                        'type': 'string',
+                        'description': 'Server-Sent Events stream with real-time conversation updates. Events are serialized using event_to_dict() and sent as SSE format.',
+                        'examples': [
+                            {
+                                'id': 1,
+                                'timestamp': '2024-01-15T10:45:00.123Z',
+                                'source': 'user',
+                                'message': 'Please review this code',
+                                'action': 'message',
+                                'args': {
+                                    'content': 'Please review this code',
+                                    'image_urls': None,
+                                    'wait_for_response': False,
+                                },
+                            },
+                            {
+                                'id': 2,
+                                'timestamp': '2024-01-15T10:45:30.456Z',
+                                'source': 'agent',
+                                'message': "I'll analyze the code for you...",
+                                'action': 'message',
+                                'args': {
+                                    'content': "I'll analyze the code for you. Let me start by examining the structure...",
+                                    'wait_for_response': False,
+                                },
+                            },
+                            {
+                                'id': 3,
+                                'timestamp': '2024-01-15T10:45:35.789Z',
+                                'source': 'agent',
+                                'observation': 'agent_state_changed',
+                                'content': '',
+                                'extras': {
+                                    'agent_state': 'RUNNING',
+                                    'reason': 'Starting code analysis',
+                                },
+                                'success': True,
+                            },
+                            {
+                                'id': 4,
+                                'timestamp': '2024-01-15T10:45:45.012Z',
+                                'source': 'agent',
+                                'action': 'streaming_message',
+                                'args': {
+                                    'message': 'Looking at the function definitions, I can see several potential issues...',
+                                    'finished': False,
+                                },
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+        400: {
+            'description': 'Missing required fields (conversation_id, system_prompt, research_mode, or user_prompt)',
+            'model': FastAPIErrorResponse,
+        },
+        401: {
+            'description': 'Invalid or missing Bearer token in Authorization header',
+            'model': FastAPIErrorResponse,
+        },
+        404: {'description': 'Conversation not found', 'model': FastAPIErrorResponse},
+        500: {
+            'description': 'Failed to establish streaming connection',
+            'model': FastAPIErrorResponse,
+        },
+    },
+)
 async def join_conversation(request: Request, data: JoinConversationIntegrationRequest):
-    """
-    Join an existing conversation given a conversation ID and an API key.
-    The user prompt is used as the next message sent to the LLM.
-    """
-
     if (
         not data.conversation_id
         or not data.system_prompt

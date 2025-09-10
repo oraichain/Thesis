@@ -61,9 +61,6 @@ class StreamingClient:
             print(f'   Full Data: {json.dumps(data, indent=2)}')
             print('-' * 30)
 
-        elif event_type == 'heartbeat':
-            print('💓 Heartbeat', end='', flush=True)
-
         elif event_type == 'error':
             error_type = event.get('error', 'Unknown')
             message = event.get('message', '')
