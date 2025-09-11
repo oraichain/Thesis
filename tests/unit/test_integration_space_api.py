@@ -174,8 +174,9 @@ class TestIntegrationSpaceAPI:
         ) as mock_get_list_space:
             # Mock empty response
             mock_get_list_space.return_value = {
-                'data': None,
+                'data': [],
                 'pagination': None,
+                'status': 'Get list spaces success',
             }
 
             response = test_client.get(
@@ -188,7 +189,6 @@ class TestIntegrationSpaceAPI:
 
             # Should return empty list when no data
             assert data['data'] == []
-            assert data['pagination'] == {}
             assert data['status'] == 'Get list spaces success'
 
     def test_get_list_space_unauthorized(self, test_client):

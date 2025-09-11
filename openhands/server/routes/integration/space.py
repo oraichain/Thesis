@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
@@ -6,9 +8,7 @@ from openhands.server.modules.space import SpaceModule
 
 # Response Models
 class SpaceListItem(BaseModel):
-    space_id: str = Field(
-        description='Unique identifier for the space', example='space_123'
-    )
+    id: int = Field(description='Unique identifier for the space', example=123)
     title: str = Field(description='Space title or name', example='AI Research Project')
     description: str = Field(
         description="Description of the space's purpose",
@@ -21,19 +21,20 @@ class SpaceListItem(BaseModel):
     updated_at: str = Field(
         description='ISO timestamp of last space update', example='2024-01-15T10:30:00Z'
     )
-    member_count: int = Field(description='Number of members in the space', example=5)
-    visibility: str = Field(description='Space visibility level', example='private')
 
 
 class PaginationInfo(BaseModel):
-    offset: int = Field(description='Number of records skipped', example=0)
-    limit: int = Field(description='Maximum number of records returned', example=10)
-    total: int = Field(description='Total number of available records', example=25)
-    has_next: bool = Field(
-        description='Whether more records are available', example=True
+    offset: Optional[int] = Field(
+        description='Number of records skipped', example=0, default=None
     )
-    has_previous: bool = Field(
-        description='Whether previous records exist', example=False
+    limit: Optional[int] = Field(
+        description='Maximum number of records returned', example=10, default=None
+    )
+    total: Optional[int] = Field(
+        description='Total number of available records', example=25, default=None
+    )
+    has_more: Optional[bool] = Field(
+        description='Whether more records are available', example=True, default=None
     )
 
 
@@ -41,52 +42,24 @@ class SpaceListResponse(BaseModel):
     data: list[SpaceListItem] = Field(
         description='List of spaces matching the request', default=[]
     )
-    pagination: PaginationInfo = Field(
-        description='Pagination information for the results'
+    pagination: Optional[PaginationInfo] = Field(
+        description='Pagination information for the results',
+        strict=False,
+        default=None,
     )
     status: str = Field(
         description='Response status message', example='Get list spaces success'
     )
 
 
-class SpaceMember(BaseModel):
-    user_id: str = Field(description='Unique user identifier', example='user_456')
-    username: str = Field(description='Username of the member', example='ai_researcher')
-    role: str = Field(description="Member's role in the space", example='contributor')
-    joined_at: str = Field(
-        description='ISO timestamp when user joined', example='2024-01-11T10:00:00Z'
-    )
-
-
 class SpaceOwner(BaseModel):
-    user_id: str = Field(description="Owner's unique identifier", example='user_789')
-    username: str = Field(description="Owner's username", example='research_lead')
-    display_name: str = Field(description="Owner's display name", example='Dr. Smith')
-
-
-class SpaceSettings(BaseModel):
-    allow_guest_access: bool = Field(
-        description='Whether guests can access the space', example=False
-    )
-    moderation_enabled: bool = Field(
-        description='Whether content moderation is enabled', example=True
-    )
-
-
-class SpaceStats(BaseModel):
-    total_conversations: int = Field(
-        description='Total number of conversations in space', example=15
-    )
-    active_conversations: int = Field(
-        description='Number of currently active conversations', example=3
-    )
-    total_messages: int = Field(
-        description='Total number of messages across all conversations', example=450
-    )
+    id: int = Field(description="Owner's unique identifier", example=789)
+    name: str = Field(description="Owner's username", example='Test User')
+    email: str = Field(description="Owner's email", example='test@example.com')
 
 
 class SpaceDetail(BaseModel):
-    space_id: str = Field(description='Unique space identifier', example='space_123')
+    id: int = Field(description='Unique space identifier', example=123)
     title: str = Field(description='Space title', example='AI Research Project')
     description: str = Field(
         description='Detailed description of the space',
@@ -100,23 +73,21 @@ class SpaceDetail(BaseModel):
         description='ISO timestamp of last update', example='2024-01-15T10:30:00Z'
     )
     owner: SpaceOwner = Field(description='Space owner information')
-    members: list[SpaceMember] = Field(description='List of space members', default=[])
-    visibility: str = Field(description='Space visibility setting', example='private')
-    settings: SpaceSettings = Field(description='Space configuration settings')
-    stats: SpaceStats = Field(description='Space usage statistics')
+    members_count: int = Field(description='Number of members in the space', example=5)
 
 
 class SpaceDetailResponse(BaseModel):
-    data: SpaceDetail = Field(description='Complete space information')
+    data: Optional[SpaceDetail] = Field(
+        description='Complete space information', default=None
+    )
     status: str = Field(
         description='Response status message', example='Get space detail success'
     )
 
 
 class SpaceSection(BaseModel):
-    section_id: str = Field(
-        description='Unique section identifier', example='section_001'
-    )
+    id: int = Field(description='Unique section identifier', example=123)
+    space_id: int = Field(description='Unique space identifier', example=123)
     title: str = Field(description='Section title', example='General Discussion')
     description: str = Field(
         description='Section description',
@@ -126,24 +97,10 @@ class SpaceSection(BaseModel):
         description='ISO timestamp when section was created',
         example='2024-01-10T09:15:00Z',
     )
-    updated_at: str = Field(
-        description='ISO timestamp of last section activity',
-        example='2024-01-15T11:30:00Z',
-    )
-    conversation_count: int = Field(
-        description='Number of conversations in this section', example=8
-    )
-    last_activity: str = Field(
-        description='ISO timestamp of last activity', example='2024-01-15T10:45:00Z'
-    )
-    order: int = Field(description='Display order of the section', example=1)
-    is_public: bool = Field(
-        description='Whether section is publicly accessible', example=True
-    )
 
 
 class SpaceSectionsResponse(BaseModel):
-    data: list[SpaceSection] = Field(
+    data: Optional[list[SpaceSection]] = Field(
         description='List of sections in the space', default=[]
     )
     status: str = Field(
@@ -197,7 +154,7 @@ async def get_list_space(
         )
 
     return {
-        'data': list_space,
+        'data': list_space or [],
         'pagination': pagination,
         'status': 'Get list spaces success',
     }

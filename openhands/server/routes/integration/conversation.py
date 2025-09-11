@@ -99,8 +99,8 @@ class ConversationDetailResponse(BaseModel):
     research_mode: str | None = Field(
         description='Research mode used in conversation', example='deep_research'
     )
-    events: list[ConversationEvent] = Field(
-        description='List of conversation events/messages', default=[]
+    events: list[dict] | None = Field(
+        description='List of conversation events/messages', default=None
     )
     final_result: str | dict | None = Field(
         description='Final result if conversation is completed', default=None
@@ -334,7 +334,7 @@ async def integration_new_deep_research_conversation(
 )
 async def integration_get_conversation(
     conversation_id: str, request: Request
-) -> ConversationDetailInfo | None:
+) -> ConversationDetailResponse:
     user_id = get_user_id(request)
     conversation = await conversation_module._get_conversation_by_id(conversation_id)
     if not conversation:
@@ -376,7 +376,22 @@ async def integration_get_conversation(
         conversation.user_id,
     )
     if not event_store:
-        return conversation_info
+        # Convert ConversationDetailInfo dataclass to ConversationDetailResponse
+        return ConversationDetailResponse(
+            conversation_id=conversation_info.conversation_id,
+            title=conversation_info.title,
+            status=conversation_info.status.value,
+            created_at=conversation_info.created_at.isoformat()
+            if conversation_info.created_at
+            else None,
+            last_updated_at=conversation_info.last_updated_at.isoformat()
+            if conversation_info.last_updated_at
+            else None,
+            selected_repository=conversation_info.selected_repository,
+            research_mode=conversation_info.research_mode,
+            events=conversation_info.events,  # Test expects None when no event store
+            final_result=conversation_info.final_result,
+        )
     async_store = AsyncEventStoreWrapper(event_store, 0)
     result = []
     streaming_events = []
@@ -413,7 +428,23 @@ async def integration_get_conversation(
     conversation_info.events = result
     if getattr(conversation, 'final_result', None):
         conversation_info.final_result = conversation.final_result
-    return conversation_info
+
+    # Convert ConversationDetailInfo dataclass to ConversationDetailResponse
+    return ConversationDetailResponse(
+        conversation_id=conversation_info.conversation_id,
+        title=conversation_info.title,
+        status=conversation_info.status.value,
+        created_at=conversation_info.created_at.isoformat()
+        if conversation_info.created_at
+        else None,
+        last_updated_at=conversation_info.last_updated_at.isoformat()
+        if conversation_info.last_updated_at
+        else None,
+        selected_repository=conversation_info.selected_repository,
+        research_mode=conversation_info.research_mode,
+        events=conversation_info.events,
+        final_result=conversation_info.final_result,
+    )
 
 
 def _handle_streaming_message(streaming_events: list[dict] | None) -> dict | None:

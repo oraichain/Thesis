@@ -715,10 +715,11 @@ class TestIntegrationConversationAPI:
             'openhands.server.routes.integration.conversation.SpaceModule'
         ) as mock_space_module_cls:
             # Mock to return response with invalid JSON
+            from fastapi.responses import Response
 
-            mock_response = MagicMock()
-            mock_response.body = b'invalid json'
-            mock_new_conversation.return_value = mock_response
+            mock_new_conversation.return_value = Response(
+                content='invalid json', status_code=200, media_type='application/json'
+            )
 
             # Mock SpaceModule - should not be called due to invalid response
             mock_space_module = AsyncMock()
