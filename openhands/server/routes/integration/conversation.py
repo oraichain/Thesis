@@ -599,16 +599,27 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
             user_prompt: str, research_mode: ResearchMode
         ):
             """Stream wrapper that monitors client disconnection"""
-            async for chunk in client.stream(
-                user_prompt=user_prompt,
-                research_mode=research_mode,
-            ):
-                # Check if client disconnected
-                if await request.is_disconnected():
-                    # Signal cancellation to client and cleanup
-                    client.cancel()
-                    break
-                yield chunk
+            try:
+                async for chunk in client.stream(
+                    user_prompt=user_prompt,
+                    research_mode=research_mode,
+                ):
+                    # Check if client disconnected
+                    if await request.is_disconnected():
+                        # Signal cancellation to client and cleanup
+                        client.cancel()
+                        break
+                    yield chunk
+            except Exception as e:
+                logger.error(f'Stream error: {str(e)}')
+                yield json.dumps(
+                    {
+                        'type': 'error',
+                        'message': 'Streaming connection ended unexpectedly',
+                    }
+                )
+                client.cancel()  # Or cleanup
+                await request.close()
 
         return StreamingResponse(
             stream_with_cancellation(
