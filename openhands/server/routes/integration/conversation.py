@@ -558,15 +558,11 @@ class JoinConversationIntegrationRequest(BaseModel):
         },
     },
     openapi_extra={
-        'requestBody': {
-            'content': {
-                'application/json': {
-                    'examples': {
-                        'curl_example': {
-                            'summary': 'cURL Command with Streaming',
-                            'description': 'Example cURL command with --no-buffer for real-time streaming',
-                            'value': {
-                                'curl_command': '''curl -X POST \\
+        'x-codeSamples': [
+            {
+                'lang': 'curl',
+                'label': 'cURL with streaming',
+                'source': '''curl -X POST \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -d '{
@@ -577,13 +573,9 @@ class JoinConversationIntegrationRequest(BaseModel):
   }' \\
   --no-buffer \\
   "http://localhost:3000/api/v1/integration/conversations/join-conversation"''',
-                                'note': 'The --no-buffer flag enables real-time streaming output. Replace YOUR_API_KEY with your actual API key.',
-                            },
-                        }
-                    }
-                }
             }
-        }
+        ],
+        'description': 'Join an existing conversation using conversation ID and API key authentication. Allows real-time participation in ongoing conversations with streaming responses. The user prompt becomes the next message sent to the AI.\n\n**Important for streaming:** Use the `--no-buffer` flag with cURL to enable real-time streaming output.',
     },
 )
 async def join_conversation(request: Request, data: JoinConversationIntegrationRequest):
