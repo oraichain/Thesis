@@ -381,12 +381,16 @@ async def integration_get_conversation(
             conversation_id=conversation_info.conversation_id,
             title=conversation_info.title,
             status=conversation_info.status.value,
-            created_at=conversation_info.created_at.isoformat()
-            if conversation_info.created_at
-            else None,
-            last_updated_at=conversation_info.last_updated_at.isoformat()
-            if conversation_info.last_updated_at
-            else None,
+            created_at=(
+                conversation_info.created_at.isoformat()
+                if conversation_info.created_at
+                else None
+            ),
+            last_updated_at=(
+                conversation_info.last_updated_at.isoformat()
+                if conversation_info.last_updated_at
+                else None
+            ),
             selected_repository=conversation_info.selected_repository,
             research_mode=conversation_info.research_mode,
             events=conversation_info.events,  # Test expects None when no event store
@@ -434,12 +438,16 @@ async def integration_get_conversation(
         conversation_id=conversation_info.conversation_id,
         title=conversation_info.title,
         status=conversation_info.status.value,
-        created_at=conversation_info.created_at.isoformat()
-        if conversation_info.created_at
-        else None,
-        last_updated_at=conversation_info.last_updated_at.isoformat()
-        if conversation_info.last_updated_at
-        else None,
+        created_at=(
+            conversation_info.created_at.isoformat()
+            if conversation_info.created_at
+            else None
+        ),
+        last_updated_at=(
+            conversation_info.last_updated_at.isoformat()
+            if conversation_info.last_updated_at
+            else None
+        ),
         selected_repository=conversation_info.selected_repository,
         research_mode=conversation_info.research_mode,
         events=conversation_info.events,
@@ -494,48 +502,47 @@ class JoinConversationIntegrationRequest(BaseModel):
                         'description': 'Server-Sent Events stream with real-time conversation updates. Events are serialized using event_to_dict() and sent as SSE format.',
                         'examples': [
                             {
-                                'id': 1,
-                                'timestamp': '2024-01-15T10:45:00.123Z',
-                                'source': 'user',
-                                'message': 'Please review this code',
-                                'action': 'message',
-                                'args': {
-                                    'content': 'Please review this code',
-                                    'image_urls': None,
-                                    'wait_for_response': False,
+                                'type': 'oh_event',
+                                'data': {
+                                    'id': 1,
+                                    'timestamp': '2024-01-15T10:45:00.123Z',
+                                    'source': 'user',
+                                    'message': 'Please review this code',
+                                    'action': 'message',
+                                    'args': {
+                                        'content': 'Please review this code',
+                                        'image_urls': None,
+                                        'wait_for_response': False,
+                                    },
                                 },
                             },
                             {
-                                'id': 2,
-                                'timestamp': '2024-01-15T10:45:30.456Z',
-                                'source': 'agent',
-                                'message': "I'll analyze the code for you...",
-                                'action': 'message',
-                                'args': {
-                                    'content': "I'll analyze the code for you. Let me start by examining the structure...",
-                                    'wait_for_response': False,
+                                'type': 'oh_event',
+                                'data': {
+                                    'id': 2,
+                                    'timestamp': '2024-01-15T10:45:30.456Z',
+                                    'source': 'agent',
+                                    'message': "I'll analyze the code for you...",
+                                    'action': 'message',
+                                    'args': {
+                                        'content': "I'll analyze the code for you. Let me start by examining the structure...",
+                                        'wait_for_response': False,
+                                    },
                                 },
                             },
                             {
-                                'id': 3,
-                                'timestamp': '2024-01-15T10:45:35.789Z',
-                                'source': 'agent',
-                                'observation': 'agent_state_changed',
-                                'content': '',
-                                'extras': {
-                                    'agent_state': 'RUNNING',
-                                    'reason': 'Starting code analysis',
-                                },
-                                'success': True,
-                            },
-                            {
-                                'id': 4,
-                                'timestamp': '2024-01-15T10:45:45.012Z',
-                                'source': 'agent',
-                                'action': 'streaming_message',
-                                'args': {
-                                    'message': 'Looking at the function definitions, I can see several potential issues...',
-                                    'finished': False,
+                                'type': 'oh_event',
+                                'data': {
+                                    'id': 3,
+                                    'timestamp': '2024-01-15T10:45:35.789Z',
+                                    'source': 'agent',
+                                    'observation': 'agent_state_changed',
+                                    'content': '',
+                                    'extras': {
+                                        'agent_state': 'RUNNING',
+                                        'reason': 'Starting code analysis',
+                                    },
+                                    'success': True,
                                 },
                             },
                         ],
@@ -556,26 +563,6 @@ class JoinConversationIntegrationRequest(BaseModel):
             'description': 'Failed to establish streaming connection',
             'model': FastAPIErrorResponse,
         },
-    },
-    openapi_extra={
-        'x-codeSamples': [
-            {
-                'lang': 'curl',
-                'label': 'cURL with streaming',
-                'source': '''curl -X POST \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -d '{
-    "conversation_id": "conv_abc123def456",
-    "system_prompt": "Continue as an expert software architect",
-    "user_prompt": "Please review the code we discussed earlier",
-    "research_mode": "deep_research"
-  }' \\
-  --no-buffer \\
-  "http://localhost:3000/api/v1/integration/conversations/join-conversation"''',
-            }
-        ],
-        'description': 'Join an existing conversation using conversation ID and API key authentication. Allows real-time participation in ongoing conversations with streaming responses. The user prompt becomes the next message sent to the AI.\n\n**Important for streaming:** Use the `--no-buffer` flag with cURL to enable real-time streaming output.',
     },
 )
 async def join_conversation(request: Request, data: JoinConversationIntegrationRequest):
