@@ -490,7 +490,7 @@ class JoinConversationIntegrationRequest(BaseModel):
 @conversation_router.post(
     '/join-conversation',
     summary='Join Existing Conversation',
-    description='Join an existing conversation using conversation ID and API key authentication. Allows real-time participation in ongoing conversations with streaming responses. The user prompt becomes the next message sent to the AI.',
+    description='Join an existing conversation using conversation ID and API key authentication. Allows real-time participation in ongoing conversations with streaming responses. The user prompt becomes the next message sent to the AI.\n\n**Important for streaming:** Use the `--no-buffer` flag with cURL to enable real-time streaming output.',
     response_description='Streaming response with real-time conversation updates',
     responses={
         200: {
