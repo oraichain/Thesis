@@ -66,26 +66,16 @@ class SocketStreamClient:
                 logger.error(f'Failed to queue connect event: {e}')
 
         @self.sio.event
-        async def disconnect():
-            self.connected = False
-            self.finished = True
-            self.client_disconnected = True  # Set client_disconnected flag
-            disconnect_event = {
-                'type': 'connection',
-                'status': 'disconnected',
-                'message': 'Disconnected from server',
-            }
-            try:
-                await self._safe_queue_put(disconnect_event)
-            except Exception as e:
-                logger.error(f'Failed to queue disconnect event: {e}')
-
-        @self.sio.event
         async def oh_event(data):
             try:
                 # Check if this is an agent ready event
-                if isinstance(data, dict) and data.get('observation') == 'agent_ready':
-                    self.agent_ready = True
+                async with self.action_lock:  # Synchronize access
+                    if (
+                        isinstance(data, dict)
+                        and data.get('observation') == 'agent_ready'
+                    ):
+                        self.agent_ready = True
+                        await self.sio.emit('oh_user_action', self.action)
                 # Stream the complete event data. Only stream if agent is ready to get new data.
                 if self.agent_ready:
                     complete_event = {
@@ -160,6 +150,7 @@ class SocketStreamClient:
             while not self.message_queue.empty():
                 self.message_queue.get_nowait()
             if self.sio and self.sio.connected:
+                # await self.sio.emit("close_session", conversation_id=self.conversation_id)
                 await self.sio.disconnect()
         except Exception as e:
             logger.error(f'Error during graceful disconnect: {e}')
@@ -181,7 +172,13 @@ class SocketStreamClient:
                 },
             }
 
-            await self.sio.emit('oh_user_action', action_payload)
+            # Buffer the action if agent is not ready, otherwise send immediately
+            async with self.action_lock:  # Synchronize access
+                if not self.agent_ready:
+                    logger.debug('Agent not ready - buffering action')
+                    self.action = action_payload
+                else:
+                    await self.sio.emit('oh_user_action', action_payload)
 
             # Stream events as they arrive with health monitoring and timeout
             while not self.finished:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TypedDict
 
 import socketio
 
@@ -14,6 +14,11 @@ from openhands.server.session.conversation import Conversation
 from openhands.server.settings import Settings
 from openhands.storage.conversation.conversation_store import ConversationStore
 from openhands.storage.files import FileStore
+
+
+class ConversationEventStoreResponse(TypedDict):
+    event_store: EventStore
+    agent_ready: bool
 
 
 class ConversationManager(ABC):
@@ -66,7 +71,7 @@ class ConversationManager(ABC):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
-    ) -> EventStore | None:
+    ) -> ConversationEventStoreResponse | None:
         """Join a conversation and return its event stream."""
 
     async def is_agent_loop_running(self, sid: str) -> bool:
@@ -106,7 +111,7 @@ class ConversationManager(ABC):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
-    ) -> EventStore:
+    ) -> ConversationEventStoreResponse:
         """Start an event loop if one is not already running"""
 
     @abstractmethod

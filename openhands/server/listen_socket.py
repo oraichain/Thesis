@@ -18,6 +18,7 @@ from openhands.events.observation import (
     NullObservation,
 )
 from openhands.events.observation.agent import (
+    AgentReadyObservation,
     AgentStateChangedObservation,
 )
 from openhands.events.serialization import event_to_dict
@@ -284,7 +285,7 @@ async def connect(connection_id: str, environ):
     # async_store = AsyncEventStoreWrapper(event_stream, latest_event_id + 1)
     async for event in async_store:
         try:
-            logger.debug(f'oh_event: {event.__class__.__name__}')
+            # logger.debug(f'oh_event: {event.__class__.__name__}')
             if isinstance(
                 event,
                 (
@@ -300,9 +301,9 @@ async def connect(connection_id: str, environ):
                 agent_state_changed = event
             else:
                 event_dict = event_to_dict(event)
-                logger.debug(
-                    f'Processing event: {event.__class__.__name__}, source: {event_dict.get("source")} in conversation {conversation_id}'
-                )
+                # logger.debug(
+                #     f'Processing event: {event.__class__.__name__}, source: {event_dict.get("source")} in conversation {conversation_id}'
+                # )
 
                 new_event_dict = {**event_dict, 'initialize_conversation': True}
                 args = new_event_dict.get('args', {})
@@ -341,6 +342,15 @@ async def connect(connection_id: str, environ):
             logger.error(
                 f'Error emitting agent state change: {str(e)} {conversation_id}'
             )
+    if event_stream['agent_ready']:
+        logger.info(
+            f'Agent is ready to process actions for conversation {conversation_id}'
+        )
+        await sio.emit(
+            'oh_event',
+            event_to_dict(AgentReadyObservation('Agent is ready to process actions')),
+            to=connection_id,
+        )
     logger.info(f'Finished replaying event stream for conversation {conversation_id}')
 
 
@@ -360,3 +370,11 @@ async def oh_action(connection_id: str, data: dict):
 async def disconnect(connection_id: str):
     logger.info(f'sio:disconnect:{connection_id}')
     await conversation_manager.disconnect_from_session(connection_id)
+
+
+@sio.event
+async def close_session(connection_id: str, conversation_id: str | None = None):
+    logger.info(
+        f'sio:close_session:{connection_id}; conversation_id: {conversation_id}'
+    )
+    await conversation_manager.close_session(connection_id)
