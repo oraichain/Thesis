@@ -37,7 +37,6 @@ class SocketStreamClient:
         self.connected = False
         self.finished = False
         self.client_disconnected = False
-        self.last_message_time = time.time()  # Track last message for timeout detection
         self.agent_ready = False  # Track if agent is ready to process actions
         self.cancel_event = asyncio.Event()  # Cancellation signal
         self.action_lock = asyncio.Lock()  # Added lock for agent_ready and action_queue
@@ -56,7 +55,6 @@ class SocketStreamClient:
         # Set up event handlers before connecting
         @self.sio.event
         async def connect():
-            self.last_message_time = time.time()  # Update timestamp on connection
             connection_event = {
                 'type': 'connection',
                 'status': 'connected',
@@ -84,17 +82,10 @@ class SocketStreamClient:
 
         @self.sio.event
         async def oh_event(data):
-            self.last_message_time = time.time()  # Update timestamp on message received
-
             try:
                 # Check if this is an agent ready event
-                async with self.action_lock:  # Synchronize access
-                    if (
-                        isinstance(data, dict)
-                        and data.get('observation') == 'agent_ready'
-                    ):
-                        self.agent_ready = True
-                        await self.sio.emit('oh_user_action', self.action)
+                if isinstance(data, dict) and data.get('observation') == 'agent_ready':
+                    self.agent_ready = True
                 # Stream the complete event data. Only stream if agent is ready to get new data.
                 if self.agent_ready:
                     complete_event = {
@@ -190,13 +181,27 @@ class SocketStreamClient:
                 },
             }
 
-            # Buffer the action if agent is not ready, otherwise send immediately
-            async with self.action_lock:  # Synchronize access
-                if not self.agent_ready:
-                    logger.debug('Agent not ready - buffering action')
-                    self.action = action_payload
-                else:
+            # Wait for agent_ready, but only up to stream_timeout seconds
+            start_time = time.time()
+            while True:
+                if self.agent_ready:
                     await self.sio.emit('oh_user_action', action_payload)
+                    break
+                elapsed = time.time() - start_time
+                if elapsed >= stream_timeout:
+                    logger.error(
+                        f'Agent not ready after {stream_timeout} seconds, disconnecting'
+                    )
+                    await self._graceful_disconnect()
+                    timeout_event = {
+                        'type': 'completion',
+                        'status': 'finished',
+                        'message': f'Agent not ready after {stream_timeout} seconds, disconnecting',
+                    }
+                    yield json.dumps(timeout_event, cls=self.json_encoder)
+                    return
+                logger.debug('Agent not ready - buffering action')
+                await asyncio.sleep(1)
 
             # Stream events as they arrive with health monitoring and timeout
             while not self.finished:
@@ -227,9 +232,6 @@ class SocketStreamClient:
                     # Check if we got a message
                     if queue_task in done:
                         event = await queue_task
-                        self.last_message_time = (
-                            time.time()
-                        )  # Update timestamp on message processed
                         # Send complete event as JSON
                         event_json = json.dumps(event, cls=self.json_encoder)
                         yield event_json
