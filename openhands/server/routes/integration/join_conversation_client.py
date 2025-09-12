@@ -181,27 +181,7 @@ class SocketStreamClient:
                 },
             }
 
-            # Wait for agent_ready, but only up to stream_timeout seconds
-            start_time = time.time()
-            while True:
-                if self.agent_ready:
-                    await self.sio.emit('oh_user_action', action_payload)
-                    break
-                elapsed = time.time() - start_time
-                if elapsed >= stream_timeout:
-                    logger.error(
-                        f'Agent not ready after {stream_timeout} seconds, disconnecting'
-                    )
-                    await self._graceful_disconnect()
-                    timeout_event = {
-                        'type': 'completion',
-                        'status': 'finished',
-                        'message': f'Agent not ready after {stream_timeout} seconds, disconnecting',
-                    }
-                    yield json.dumps(timeout_event, cls=self.json_encoder)
-                    return
-                logger.debug('Agent not ready - buffering action')
-                await asyncio.sleep(1)
+            await self.sio.emit('oh_user_action', action_payload)
 
             # Stream events as they arrive with health monitoring and timeout
             while not self.finished:

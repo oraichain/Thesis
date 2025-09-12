@@ -1,4 +1,6 @@
+import asyncio
 import json
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -594,6 +596,17 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
             system_prompt=data.system_prompt,
             research_mode=ResearchMode(data.research_mode),
         )
+
+        start_time = time.time()
+        while not client.agent_ready:
+            await asyncio.sleep(1)
+            if time.time() - start_time > 120:
+                raise HTTPException(
+                    status_code=500,
+                    detail='Agent not ready to process actions after 120 seconds',
+                )
+
+        logger.info('Agent is ready to process actions')
 
         async def stream_with_cancellation(
             user_prompt: str, research_mode: ResearchMode
