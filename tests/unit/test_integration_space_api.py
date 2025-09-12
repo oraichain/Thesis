@@ -383,8 +383,8 @@ class TestIntegrationSpaceAPI:
             assert response.status_code == 200
             data = response.json()
 
-            # Should return empty list when no sections
-            assert data['data'] == []
+            # Should return None when no sections
+            assert data['data'] is None
             assert data['status'] == 'Get space sections success'
 
     def test_get_space_sections_unauthorized_on_space_check(self, test_client):
