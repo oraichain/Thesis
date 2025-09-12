@@ -504,6 +504,8 @@ async def check_feature_credit(
     payload = {'featureCode': feature_code, 'userId': user_id}
     logger.debug(f'payload: {payload}')
     try:
+        if os.getenv('RUN_MODE') == 'DEV':
+            return {'data': 'test'}
         if run_on_oh:
             async with httpx.AsyncClient(
                 base_url=os.getenv('THESIS_AUTH_SERVER_URL', ''),
