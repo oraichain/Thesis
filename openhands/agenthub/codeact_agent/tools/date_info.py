@@ -7,5 +7,10 @@ DateInfoTool = ChatCompletionToolParam(
     function=ChatCompletionToolParamFunctionChunk(
         name='get_current_date',
         description=_DATE_DESCRIPTION,
+        parameters={
+            'type': 'object',
+            'properties': {},
+            'required': [],
+        },
     ),
 )
