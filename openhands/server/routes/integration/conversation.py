@@ -470,20 +470,25 @@ class JoinConversationIntegrationRequest(BaseModel):
         description='ID of the existing conversation to join',
         example='conv_abc123def456',
     )
-    system_prompt: str | None = Field(
-        None,
-        description='System prompt to apply when joining the conversation',
-        example='Continue as an expert software architect',
-    )
     user_prompt: str | None = Field(
         None,
         description='Message to send when joining the conversation',
         example='Please review the code we discussed earlier',
     )
-    research_mode: str | None = Field(
+    research_mode: ResearchMode | None = Field(
         None,
-        description='Research mode to use in the conversation',
-        example='deep_research',
+        description='Research mode to use in the conversation. Must be one of: chat, deep_research, follow_up',
+        example=ResearchMode.DEEP_RESEARCH.value,
+    )
+    latest_event_id: int | None = Field(
+        None,
+        description='ID of the latest event to resume from',
+        example=123,
+    )
+    x_device_id: str | None = Field(
+        None,
+        description='Device ID to use for the conversation',
+        example='123',
     )
 
 
@@ -566,12 +571,7 @@ class JoinConversationIntegrationRequest(BaseModel):
     },
 )
 async def join_conversation(request: Request, data: JoinConversationIntegrationRequest):
-    if (
-        not data.conversation_id
-        or not data.system_prompt
-        or not data.research_mode
-        or not data.user_prompt
-    ):
+    if not data.conversation_id or not data.research_mode or not data.user_prompt:
         raise HTTPException(status_code=400, detail='Missing required fields')
 
     authorization = request.headers.get('Authorization')
@@ -591,7 +591,6 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
             conversation_id=data.conversation_id,
             jwt_token=jwt_token,
             api_base_url='http://localhost:3000',  # TODO: make the port configurable
-            system_prompt=data.system_prompt,
             research_mode=ResearchMode(data.research_mode),
         )
 

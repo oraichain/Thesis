@@ -90,8 +90,9 @@ class SocketStreamClient:
         self,
         conversation_id: str,
         api_base_url: str,
-        system_prompt: str,
         research_mode: ResearchMode,
+        latest_event_id: int | None = None,
+        x_device_id: str | None = None,
         jwt_token: str | None = None,
         api_key: str | None = None,
     ):
@@ -103,10 +104,13 @@ class SocketStreamClient:
         # URL-encode query parameters
         query_params = {
             'conversation_id': conversation_id,
-            'system_prompt': system_prompt,
-            'research_mode': research_mode,
+            'research_mode': research_mode.value,
             'mode': 'normal',
         }
+        if latest_event_id:
+            query_params['latest_event_id'] = str(latest_event_id)
+        if x_device_id:
+            query_params['x-device-id'] = x_device_id
         if jwt_token:
             query_params['auth'] = jwt_token
         elif api_key:
