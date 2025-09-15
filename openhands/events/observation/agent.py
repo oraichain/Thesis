@@ -161,4 +161,4 @@ class AgentReadyObservation(Observation):
 
     @property
     def message(self) -> str:
-        return 'Agent is ready to process actions'
+        return self.content

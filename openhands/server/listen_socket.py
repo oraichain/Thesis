@@ -348,7 +348,7 @@ async def connect(connection_id: str, environ):
         )
         await sio.emit(
             'oh_event',
-            event_to_dict(AgentReadyObservation('Agent is ready to process actions')),
+            event_to_dict(AgentReadyObservation('')),
             to=connection_id,
         )
     logger.info(f'Finished replaying event stream for conversation {conversation_id}')
