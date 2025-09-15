@@ -739,6 +739,7 @@ class CodeActAgent(Agent):
         if self.enable_streaming:
             params['stream_options'] = {'include_usage': True}
         logger.info(f'Messages: {messages}')
+        print(f'Messages: {messages}')
         last_message = messages[-1]
 
         response = None
