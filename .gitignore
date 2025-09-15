@@ -237,3 +237,6 @@ yes/
 
 .claude/
 migration_checkpoint.json
+
+# refund mcp
+scripts/refund_mcp/refund_data
