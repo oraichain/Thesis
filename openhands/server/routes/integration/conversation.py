@@ -1,4 +1,3 @@
-import asyncio
 import json
 
 from fastapi import APIRouter, HTTPException, Request
@@ -588,13 +587,9 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
 
     try:
         client = SocketStreamClient()
-        # Run the sync connect method in a thread
-        await asyncio.to_thread(
-            client.connect,
+        await client.connect(
             conversation_id=data.conversation_id,
             jwt_token=jwt_token,
-            x_device_id=data.x_device_id,
-            latest_event_id=data.latest_event_id,
             api_base_url='http://localhost:3000',  # TODO: make the port configurable
             research_mode=ResearchMode(data.research_mode),
         )
@@ -604,28 +599,16 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
         ):
             """Stream wrapper that monitors client disconnection"""
             try:
-                # Create a thread-safe way to get chunks from the sync generator
-                generator = client.stream(
+                async for chunk in client.stream(
                     user_prompt=user_prompt,
                     research_mode=research_mode,
-                )
-
-                # Run the generator in a thread and yield chunks asynchronously
-                while True:
-                    try:
-                        # Check if client disconnected first
-                        if await request.is_disconnected():
-                            client.cancel()
-                            break
-
-                        # Get next chunk from sync generator in thread
-                        chunk = await asyncio.to_thread(next, generator, None)
-                        if chunk is None:  # Generator exhausted
-                            break
-                        yield chunk
-                    except StopIteration:
+                ):
+                    # Check if client disconnected
+                    if await request.is_disconnected():
+                        # Signal cancellation to client and cleanup
+                        client.cancel()
                         break
-
+                    yield chunk
             except Exception as e:
                 logger.error(f'Stream error: {str(e)}')
                 yield json.dumps(
@@ -635,6 +618,7 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
                     }
                 )
                 client.cancel()  # Or cleanup
+                await request.close()
 
         return StreamingResponse(
             stream_with_cancellation(
