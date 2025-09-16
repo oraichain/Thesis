@@ -587,6 +587,7 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
 
     try:
         client = SocketStreamClient()
+        # close old session if exists before connecting to new session
         await client.connect(
             conversation_id=data.conversation_id,
             jwt_token=jwt_token,

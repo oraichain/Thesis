@@ -41,6 +41,7 @@ class SocketStreamClient:
         self.cancel_event = asyncio.Event()  # Cancellation signal
         self.action_lock = asyncio.Lock()  # Added lock for agent_ready and action_queue
         self.action: dict | None = None
+        self.conversation_id: str | None = None
 
         # Custom JSON encoder for non-serializable objects
         class CustomJSONEncoder(json.JSONEncoder):
@@ -78,6 +79,9 @@ class SocketStreamClient:
                         await self.sio.emit('oh_user_action', self.action)
                 # Stream the complete event data. Only stream if agent is ready to get new data.
                 if self.agent_ready:
+                    logger.debug(
+                        f'Agent ready - streaming complete event with data: {data}'
+                    )
                     complete_event = {
                         'type': 'oh_event',
                         'data': data,
@@ -100,6 +104,8 @@ class SocketStreamClient:
         # Validate api_base_url
         if not api_base_url.startswith(('http://', 'https://')):
             raise ValueError('api_base_url must start with http:// or https://')
+
+        self.conversation_id = conversation_id
 
         # URL-encode query parameters
         query_params = {
@@ -152,7 +158,10 @@ class SocketStreamClient:
             while not self.message_queue.empty():
                 self.message_queue.get_nowait()
             if self.sio and self.sio.connected:
-                # await self.sio.emit("close_session", conversation_id=self.conversation_id)
+                logger.debug(
+                    f'Closing session for conversation: {self.conversation_id}'
+                )
+                await self.sio.emit('close_session', self.conversation_id)
                 await self.sio.disconnect()
         except Exception as e:
             logger.error(f'Error during graceful disconnect: {e}')
@@ -180,6 +189,9 @@ class SocketStreamClient:
                     logger.debug('Agent not ready - buffering action')
                     self.action = action_payload
                 else:
+                    logger.debug(
+                        f'Agent ready - sending action with payload: {action_payload}'
+                    )
                     await self.sio.emit('oh_user_action', action_payload)
 
             # Stream events as they arrive with health monitoring and timeout
@@ -194,6 +206,8 @@ class SocketStreamClient:
                         timeout=stream_timeout,
                         return_when=asyncio.FIRST_COMPLETED,
                     )
+
+                    logger.debug(f'Done: {done}, Pending: {pending}')
 
                     # Cancel any pending tasks
                     for task in pending:
