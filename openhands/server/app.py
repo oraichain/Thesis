@@ -29,6 +29,9 @@ from openhands.server.routes.prompt import app as prompt_api_router
 from openhands.server.routes.public import app as public_api_router
 from openhands.server.routes.security import app as security_api_router
 from openhands.server.routes.settings import app as settings_router
+from openhands.server.routes.share_conversations import (
+    app as share_conversation_api_router,
+)
 from openhands.server.routes.trajectory import app as trajectory_router
 from openhands.server.routes.usecase import app as usecase_api_router
 from openhands.server.shared import config, conversation_manager
@@ -121,3 +124,4 @@ app.include_router(invitation_api_router, include_in_schema=False)
 app.include_router(prompt_api_router, include_in_schema=False)
 app.include_router(usecase_api_router, include_in_schema=False)
 app.include_router(integration_api_router)
+app.include_router(share_conversation_api_router)

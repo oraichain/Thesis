@@ -988,8 +988,9 @@ class AgentController:
             )
             return
 
-        self.update_state_before_step()
         action: Action = NullAction()
+        # Count the step attempt at the beginning so limits and views match attempts
+        # self.update_state_before_step() # This line is moved to the top
 
         if self._replay_manager.should_replay():
             # in replay mode, we don't let the agent to proceed
@@ -997,6 +998,8 @@ class AgentController:
             action = self._replay_manager.step()
         else:
             try:
+                # Count the step attempt just before invoking the agent
+                self.update_state_before_step()
                 step_result = self.agent.step(self.state)
                 if step_result is None:
                     raise LLMNoActionError(NO_ACTION_WAS_RETURN)
