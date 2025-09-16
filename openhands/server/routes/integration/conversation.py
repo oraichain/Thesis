@@ -590,6 +590,8 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
         await client.connect(
             conversation_id=data.conversation_id,
             jwt_token=jwt_token,
+            x_device_id=data.x_device_id,
+            latest_event_id=data.latest_event_id,
             api_base_url='http://localhost:3000',  # TODO: make the port configurable
             research_mode=ResearchMode(data.research_mode),
         )
