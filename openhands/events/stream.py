@@ -80,6 +80,7 @@ class EventStream(EventStore):
         self.secrets = {}
         self._write_page_cache = []
         self.max_delay_time = max_delay_time
+        self.close_subscriber_queue: dict[str, dict[str, bool]] = {}
 
     def _init_thread_loop(self, subscriber_id: str, callback_id: str) -> None:
         loop = asyncio.new_event_loop()
@@ -117,7 +118,11 @@ class EventStream(EventStore):
             loop = self._thread_loops[subscriber_id][callback_id]
             try:
                 if loop.is_running():
-                    loop.call_soon_threadsafe(loop.stop)
+                    # Tag the loop to be closed, will handle when the loop is not running in _make_error_handler
+                    if not self.close_subscriber_queue.get(subscriber_id):
+                        self.close_subscriber_queue[subscriber_id] = {}
+                    self.close_subscriber_queue[subscriber_id][callback_id] = True
+                    return
                 else:
                     loop.stop()
                     loop.close()
@@ -296,6 +301,11 @@ class EventStream(EventStore):
             try:
                 # This will raise any exception that occurred during callback execution
                 fut.result()
+                if self.close_subscriber_queue.get(subscriber_id):
+                    if self.close_subscriber_queue[subscriber_id].get(callback_id):
+                        self._clean_up_subscriber(
+                            subscriber_id=subscriber_id, callback_id=callback_id
+                        )
             except Exception as e:
                 logger.error(
                     f'Error in event callback {callback_id} for subscriber {subscriber_id}: {str(e)}',
