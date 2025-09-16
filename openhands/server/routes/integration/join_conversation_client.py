@@ -123,7 +123,6 @@ class SocketStreamClient:
         try:
             await self.sio.connect(
                 f'{api_base_url}?{query_string}',
-                socketio_path='/socket.io',
                 transports=['websocket'],
                 wait_timeout=5,
                 retry=True,
