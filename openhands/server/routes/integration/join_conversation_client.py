@@ -1,8 +1,9 @@
-import asyncio
 import json
+import queue
+import threading
 import time
 import urllib.parse  # Added for URL encoding
-from typing import AsyncGenerator
+from typing import Generator
 
 import socketio
 import socketio.exceptions
@@ -32,14 +33,16 @@ def has_finished_processing_user_action(event: dict) -> bool:
 
 class SocketStreamClient:
     def __init__(self):
-        self.sio = socketio.AsyncClient(reconnection_attempts=5, reconnection_delay=2)
-        self.message_queue: asyncio.Queue = asyncio.Queue()
+        self.sio = socketio.Client(reconnection_attempts=5, reconnection_delay=2)
+        self.message_queue: queue.Queue = queue.Queue()
         self.connected = False
         self.finished = False
         self.client_disconnected = False
         self.agent_ready = False  # Track if agent is ready to process actions
-        self.cancel_event = asyncio.Event()  # Cancellation signal
-        self.action_lock = asyncio.Lock()  # Added lock for agent_ready and action_queue
+        self.cancel_event = threading.Event()  # Cancellation signal
+        self.action_lock = (
+            threading.Lock()
+        )  # Added lock for agent_ready and action_queue
         self.action: dict | None = None
 
         # Custom JSON encoder for non-serializable objects
@@ -54,39 +57,39 @@ class SocketStreamClient:
 
         # Set up event handlers before connecting
         @self.sio.event
-        async def connect():
+        def connect():
             connection_event = {
                 'type': 'connection',
                 'status': 'connected',
                 'message': 'Connected to conversation',
             }
             try:
-                await self._safe_queue_put(connection_event)
+                self._safe_queue_put(connection_event)
             except Exception as e:
                 logger.error(f'Failed to queue connect event: {e}')
 
         @self.sio.event
-        async def oh_event(data):
+        def oh_event(data):
             try:
                 # Check if this is an agent ready event
-                async with self.action_lock:  # Synchronize access
+                with self.action_lock:  # Synchronize access
                     if (
                         isinstance(data, dict)
                         and data.get('observation') == 'agent_ready'
                     ):
                         self.agent_ready = True
-                        await self.sio.emit('oh_user_action', self.action)
+                        self.sio.emit('oh_user_action', self.action)
                 # Stream the complete event data. Only stream if agent is ready to get new data.
                 if self.agent_ready:
                     complete_event = {
                         'type': 'oh_event',
                         'data': data,
                     }
-                    await self._safe_queue_put(complete_event)
+                    self._safe_queue_put(complete_event)
             except Exception as e:
                 logger.error(f'Error in oh_event handler: {e}')
 
-    async def connect(
+    def connect(
         self,
         conversation_id: str,
         api_base_url: str,
@@ -121,13 +124,12 @@ class SocketStreamClient:
         query_string = urllib.parse.urlencode(query_params)
 
         try:
-            await self.sio.connect(
+            self.sio.connect(
                 f'{api_base_url}?{query_string}',
                 socketio_path='/socket.io',
                 transports=['websocket'],
                 namespaces='/',
                 wait_timeout=5,
-                retry=True,
             )
             self.connected = True
             self.finished = False
@@ -135,15 +137,15 @@ class SocketStreamClient:
             logger.error(f'Connection failed: {e}')
             raise  # Re-raise to ensure caller is notified immediately
 
-    async def _safe_queue_put(self, item):
+    def _safe_queue_put(self, item):
         """Safely put item in queue, handling overflow gracefully"""
-        await self.message_queue.put(item)
+        self.message_queue.put(item)
 
     def cancel(self):
         """Signal external cancellation"""
         self.cancel_event.set()  # Wake up any blocking operations
 
-    async def _graceful_disconnect(self):
+    def _graceful_disconnect(self):
         """Gracefully disconnect and cleanup resources"""
         try:
             self.finished = True
@@ -152,19 +154,22 @@ class SocketStreamClient:
             self.client_disconnected = True
             # Clear message queue
             while not self.message_queue.empty():
-                self.message_queue.get_nowait()
+                try:
+                    self.message_queue.get_nowait()
+                except queue.Empty:
+                    break
             if self.sio and self.sio.connected:
-                # await self.sio.emit("close_session", conversation_id=self.conversation_id)
-                await self.sio.disconnect()
+                # self.sio.emit("close_session", conversation_id=self.conversation_id)
+                self.sio.disconnect()
         except Exception as e:
             logger.error(f'Error during graceful disconnect: {e}')
 
-    async def stream(
+    def stream(
         self,
         user_prompt: str,
         research_mode: ResearchMode,
         stream_timeout: int = 120,  # Added configurable stream timeout
-    ) -> AsyncGenerator[str, None]:
+    ) -> Generator[str, None, None]:
         """Connect to socket and yield messages as they arrive"""
         try:
             action_payload = {
@@ -177,42 +182,24 @@ class SocketStreamClient:
             }
 
             # Buffer the action if agent is not ready, otherwise send immediately
-            async with self.action_lock:  # Synchronize access
+            with self.action_lock:  # Synchronize access
                 if not self.agent_ready:
                     logger.debug('Agent not ready - buffering action')
                     self.action = action_payload
                 else:
-                    await self.sio.emit('oh_user_action', action_payload)
+                    self.sio.emit('oh_user_action', action_payload)
 
             # Stream events as they arrive with health monitoring and timeout
             while not self.finished:
                 try:
-                    # Wait for either a message or cancellation signal with configurable timeout
-                    queue_task = asyncio.create_task(self.message_queue.get())
-                    cancel_task = asyncio.create_task(self.cancel_event.wait())
-
-                    done, pending = await asyncio.wait(
-                        [queue_task, cancel_task],
-                        timeout=stream_timeout,
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-
-                    # Cancel any pending tasks
-                    for task in pending:
-                        task.cancel()
-                        try:
-                            await task
-                        except asyncio.CancelledError:
-                            pass
-
-                    # Check if we got cancelled
-                    if cancel_task in done:
-                        await self._graceful_disconnect()
+                    # Check if we got cancelled first
+                    if self.cancel_event.is_set():
+                        self._graceful_disconnect()
                         break
 
-                    # Check if we got a message
-                    if queue_task in done:
-                        event = await queue_task
+                    # Try to get a message with timeout
+                    try:
+                        event = self.message_queue.get(timeout=stream_timeout)
                         # Send complete event as JSON
                         event_json = json.dumps(event, cls=self.json_encoder)
                         yield event_json
@@ -221,20 +208,16 @@ class SocketStreamClient:
                                 'Agent has finished processing user action, disconnecting'
                             )
                             break
-                    else:
+                    except queue.Empty:
                         # This means we timed out
-                        raise asyncio.TimeoutError()
-
-                except asyncio.TimeoutError:
-                    # Configurable timeout reached - disconnect and exit
-                    timeout_event = {
-                        'type': 'completion',
-                        'status': 'finished',
-                        'message': f'No messages received for {stream_timeout} seconds, disconnecting',
-                    }
-                    yield json.dumps(timeout_event, cls=self.json_encoder)
-                    await self._graceful_disconnect()
-                    break
+                        timeout_event = {
+                            'type': 'completion',
+                            'status': 'finished',
+                            'message': f'No messages received for {stream_timeout} seconds, disconnecting',
+                        }
+                        yield json.dumps(timeout_event, cls=self.json_encoder)
+                        self._graceful_disconnect()
+                        break
                 except json.JSONDecodeError as e:
                     error_event = {
                         'type': 'error',
@@ -268,4 +251,4 @@ class SocketStreamClient:
             yield json.dumps(error_event, cls=self.json_encoder)
         finally:
             # Always attempt graceful cleanup
-            await self._graceful_disconnect()
+            self._graceful_disconnect()
