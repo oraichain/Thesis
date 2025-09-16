@@ -537,8 +537,14 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={'detail': 'Missing or invalid authorization header'},
+            )
+
         api_key = auth_header.split(' ')[-1]
-        if not auth_header or not auth_header.startswith('Bearer ') or not api_key:
+        if not api_key:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={'detail': 'Missing or invalid authorization header'},
