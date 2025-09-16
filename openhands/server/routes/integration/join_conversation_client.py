@@ -125,7 +125,6 @@ class SocketStreamClient:
                 f'{api_base_url}?{query_string}',
                 socketio_path='/socket.io',
                 transports=['websocket'],
-                namespaces='/',
                 wait_timeout=5,
                 retry=True,
             )
