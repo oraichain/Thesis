@@ -13,6 +13,7 @@ from openhands.events.action.init_pyodide import InitPyodideAction
 from openhands.events.action.message import StreamingMessageAction
 from openhands.events.event import Event, EventSource
 from openhands.events.event_store import EventStore
+from openhands.events.observation.agent import AgentReadyObservation
 from openhands.events.serialization.event import event_from_dict, event_to_dict
 from openhands.io import json
 from openhands.server.modules import conversation_module
@@ -199,8 +200,13 @@ class EventStream(EventStore):
                 self._write_page_cache = []
 
         if event.id is not None:
-            if not isinstance(event, StreamingMessageAction) and not isinstance(
-                event, InitPyodideAction
+            if (
+                not isinstance(event, StreamingMessageAction)
+                and not isinstance(
+                    event,
+                    InitPyodideAction,
+                )
+                and not isinstance(event, AgentReadyObservation)
             ):
                 # Write the event to the store - this can take some time
                 self.file_store.write(

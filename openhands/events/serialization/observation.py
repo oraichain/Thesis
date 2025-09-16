@@ -10,6 +10,7 @@ from openhands.events.observation.a2a import (
 )
 from openhands.events.observation.agent import (
     AgentCondensationObservation,
+    AgentReadyObservation,
     AgentStateChangedObservation,
     AgentThinkObservation,
     MicroagentKnowledge,
@@ -56,6 +57,7 @@ observations = (
     SuccessObservation,
     ErrorObservation,
     AgentStateChangedObservation,
+    AgentReadyObservation,
     UserRejectObservation,
     AgentCondensationObservation,
     AgentThinkObservation,

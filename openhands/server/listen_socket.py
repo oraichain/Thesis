@@ -18,6 +18,7 @@ from openhands.events.observation import (
     NullObservation,
 )
 from openhands.events.observation.agent import (
+    AgentReadyObservation,
     AgentStateChangedObservation,
 )
 from openhands.events.serialization import event_to_dict
@@ -33,6 +34,7 @@ from openhands.server.shared import (
 from openhands.server.thesis_auth import (
     ThesisUser,
     get_system_prompt_by_space_id_from_thesis_auth_server,
+    get_user_detail_by_api_key,
     get_user_detail_from_thesis_auth_server,
 )
 from openhands.storage.conversation.conversation_store import ConversationStore
@@ -70,6 +72,7 @@ async def connect(connection_id: str, environ):
     mcp_disable = query_params.get('mcp_disable', [None])[0]
     x_device_id = query_params.get('x-device-id', [None])[0]
     jwt_token = query_params.get('auth', [None])[0]
+    api_key = query_params.get('api_key', [None])[0]
     # providers_raw: list[str] = query_params.get('providers_set', [])
     # providers_set: list[ProviderType] = [ProviderType(p) for p in providers_raw]
 
@@ -127,31 +130,39 @@ async def connect(connection_id: str, environ):
             )
             if not conversation_store:
                 raise ConnectionRefusedError('Conversation store not found')
-            conversation_metadata_result_set = await conversation_store.get_metadata(
-                conversation_id
-            )
-            if (
-                conversation_metadata_result_set
-                and conversation_metadata_result_set.user_id == whitelisted_user_id
-            ):
-                is_whitelisted = True
-                logger.info(
-                    f'Whitelisted access for user {user_id} and conversation {conversation_id}'
+            try:
+                conversation_metadata_result_set = (
+                    await conversation_store.get_metadata(conversation_id)
                 )
+                if (
+                    conversation_metadata_result_set
+                    and conversation_metadata_result_set.user_id == whitelisted_user_id
+                ):
+                    is_whitelisted = True
+                    logger.info(
+                        f'Whitelisted access for user {user_id} and conversation {conversation_id}'
+                    )
+            except Exception as e:
+                logger.error(f'Error getting conversation metadata: {str(e)}')
+                is_whitelisted = False
 
         if not is_whitelisted:
             # Normal authentication flow for non-whitelisted users/conversations
-            if not jwt_token:
+            if not jwt_token and not api_key:
                 logger.error('No JWT token provided')
                 raise ConnectionRefusedError('Authentication required')
 
         try:
-            if jwt_token is None:
-                raise jwt.InvalidTokenError('No JWT token provided')
+            user: ThesisUser | None = None
+            if jwt_token:
+                user = await get_user_detail_from_thesis_auth_server(
+                    'Bearer ' + jwt_token, x_device_id
+                )
+            elif api_key:
+                user, _ = await get_user_detail_by_api_key(api_key)
+            else:
+                raise jwt.InvalidTokenError('No Authentication provided')
 
-            user: ThesisUser | None = await get_user_detail_from_thesis_auth_server(
-                'Bearer ' + jwt_token, x_device_id
-            )
             if not user:
                 logger.error(f'User not found in database: {user_id}')
                 raise ConnectionRefusedError('User not found')
@@ -274,7 +285,7 @@ async def connect(connection_id: str, environ):
     # async_store = AsyncEventStoreWrapper(event_stream, latest_event_id + 1)
     async for event in async_store:
         try:
-            logger.debug(f'oh_event: {event.__class__.__name__}')
+            # logger.debug(f'oh_event: {event.__class__.__name__}')
             if isinstance(
                 event,
                 (
@@ -290,9 +301,9 @@ async def connect(connection_id: str, environ):
                 agent_state_changed = event
             else:
                 event_dict = event_to_dict(event)
-                logger.debug(
-                    f'Processing event: {event.__class__.__name__}, source: {event_dict.get("source")} in conversation {conversation_id}'
-                )
+                # logger.debug(
+                #     f'Processing event: {event.__class__.__name__}, source: {event_dict.get("source")} in conversation {conversation_id}'
+                # )
 
                 new_event_dict = {**event_dict, 'initialize_conversation': True}
                 args = new_event_dict.get('args', {})
@@ -331,6 +342,15 @@ async def connect(connection_id: str, environ):
             logger.error(
                 f'Error emitting agent state change: {str(e)} {conversation_id}'
             )
+    if event_stream['agent_ready']:
+        logger.info(
+            f'Agent is ready to process actions for conversation {conversation_id}'
+        )
+        await sio.emit(
+            'oh_event',
+            event_to_dict(AgentReadyObservation('')),
+            to=connection_id,
+        )
     logger.info(f'Finished replaying event stream for conversation {conversation_id}')
 
 
@@ -350,3 +370,11 @@ async def oh_action(connection_id: str, data: dict):
 async def disconnect(connection_id: str):
     logger.info(f'sio:disconnect:{connection_id}')
     await conversation_manager.disconnect_from_session(connection_id)
+
+
+@sio.event
+async def close_session(connection_id: str, conversation_id: str | None = None):
+    logger.info(
+        f'sio:close_session:{connection_id}; conversation_id: {conversation_id}'
+    )
+    await conversation_manager.close_session(connection_id)

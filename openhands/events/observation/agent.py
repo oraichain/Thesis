@@ -147,3 +147,18 @@ class RecallObservation(Observation):
             )
 
         return f'**RecallObservation**\n{", ".join(fields)}'
+
+
+@dataclass
+class AgentReadyObservation(Observation):
+    """Emitted when the agent has completed initialization and is ready to process actions.
+
+    This is used to solve race conditions where clients emit actions before
+    the agent has finished replay/recall operations.
+    """
+
+    observation: str = ObservationType.AGENT_READY
+
+    @property
+    def message(self) -> str:
+        return self.content

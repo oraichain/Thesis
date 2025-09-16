@@ -81,3 +81,5 @@ class ObservationType(str, Enum):
 
     GET_CURRENT_DATE = 'get_current_date'
     """Result of a get current date operation."""
+    AGENT_READY = 'agent_ready'
+    """Emitted when agent has completed initialization and is ready to process actions."""

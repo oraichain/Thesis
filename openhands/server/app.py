@@ -66,8 +66,8 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title='Thesis API',
-    description='Thesis API',
+    title='Thesis.io APIs',
+    description='Thesis.io provides comprehensive AI-powered research and conversation APIs for DeFi analysis and blockchain research. Create conversations with customizable research modes including chat, deep research, and specialized DeFi tools for real-time market analysis. Join existing conversations via streaming endpoints to participate in collaborative research sessions with advanced AI agents.',
     version=__version__,
     lifespan=_lifespan,
     dependencies=None,

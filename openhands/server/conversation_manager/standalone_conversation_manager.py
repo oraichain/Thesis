@@ -35,7 +35,7 @@ from openhands.utils.conversation_summary import (
 from openhands.utils.import_utils import get_impl
 from openhands.utils.shutdown_listener import should_continue
 
-from .conversation_manager import ConversationManager
+from .conversation_manager import ConversationEventStoreResponse, ConversationManager
 
 _CLEANUP_INTERVAL = 15
 UPDATED_AT_CALLBACK_ID = 'updated_at_callback_id'
@@ -162,7 +162,7 @@ class StandaloneConversationManager(ConversationManager):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
-    ) -> EventStore:
+    ) -> ConversationEventStoreResponse:
         logger.info(
             f'join_conversation:{sid}:{connection_id}',
             extra={'session_id': sid, 'user_id': user_id},
@@ -188,12 +188,6 @@ class StandaloneConversationManager(ConversationManager):
             space_section_id=space_section_id,
             output_config=output_config,
         )
-        if not event_stream:
-            logger.error(
-                f'No event stream after joining conversation: {sid}',
-                extra={'session_id': sid},
-            )
-            raise RuntimeError(f'no_event_stream:{sid}')
         return event_stream
 
     async def detach_from_conversation(self, conversation: Conversation):
@@ -328,9 +322,10 @@ class StandaloneConversationManager(ConversationManager):
         raw_followup_conversation_id: str | None = None,
         space_section_id: int | None = None,
         output_config: dict | None = None,
-    ) -> EventStore:
+    ):
         logger.info(f'maybe_start_agent_loop:{sid}', extra={'session_id': sid})
         session: Session | None = None
+        agent_ready = False
         if not await self.is_agent_loop_running(sid):
             logger.info(f'start_agent_loop:{sid}', extra={'session_id': sid})
 
@@ -358,7 +353,9 @@ class StandaloneConversationManager(ConversationManager):
                         extra={'session_id': sid},
                     )
                     raise RuntimeError(f'no_event_stream:{sid}')
-                return event_store
+                return ConversationEventStoreResponse(
+                    event_store=event_store, agent_ready=agent_ready
+                )
             print(f'space_section_id--->session: {space_section_id}')
             session = Session(
                 sid=sid,
@@ -397,6 +394,8 @@ class StandaloneConversationManager(ConversationManager):
                 )
             except ValueError:
                 pass  # Already subscribed - take no action
+        else:
+            agent_ready = True
 
         event_store = await self._get_event_store(sid, user_id)
         if not event_store:
@@ -405,7 +404,9 @@ class StandaloneConversationManager(ConversationManager):
                 extra={'session_id': sid},
             )
             raise RuntimeError(f'no_event_stream:{sid}')
-        return event_store
+        return ConversationEventStoreResponse(
+            event_store=event_store, agent_ready=agent_ready
+        )
 
     async def _get_event_store(
         self, sid: str, user_id: str | None, is_reached_limit: bool = False
