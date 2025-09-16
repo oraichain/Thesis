@@ -34,6 +34,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref }}
+          lfs: true
+
+      - name: Initialize Git LFS
+        run: git lfs install
 
       - name: Cache virtual environment
         uses: actions/cache@v4
