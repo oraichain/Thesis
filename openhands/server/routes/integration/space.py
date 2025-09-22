@@ -209,9 +209,9 @@ class Member(BaseModel):
 
 
 class TelegramGroupDetail(BaseModel):
-    id: str = Field(description='Telegram group ID', example='180')
-    chatId: str = Field(description='Telegram chat ID', example='1234567890')
-    spaceId: str = Field(description='Space ID', example='868')
+    id: Optional[str] = Field(description='Telegram group ID', example='180')
+    chatId: Optional[str] = Field(description='Telegram chat ID', example='1234567890')
+    spaceId: Optional[str] = Field(description='Space ID', example='868')
     groupTitle: Optional[str] = Field(
         description='Telegram group title',
         default=None,
