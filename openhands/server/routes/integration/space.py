@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -311,7 +311,9 @@ class SpaceDetail(BaseModel):
         description='Space UUID', default=None, example='THESISSPACE1234567890'
     )
     avatarUrl: Optional[str] = Field(description='Avatar URL', default=None)
-    social: Optional[str] = Field(description='Social links', default=None)
+    social: Optional[Union[str, dict[str, str]]] = Field(
+        description='Social links', default=None
+    )
     spaceType: Optional[str] = Field(description='Space type', default=None)
     inCampaign: Optional[bool] = Field(
         description='In campaign status', default=None, example=False
