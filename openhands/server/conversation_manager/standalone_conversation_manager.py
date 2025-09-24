@@ -138,7 +138,7 @@ class StandaloneConversationManager(ConversationManager):
                 await c.disconnect()
                 return None
             end_time = time.time()
-            logger.info(
+            logger.debug(
                 f'Conversation {c.sid} connected in {end_time - start_time} seconds'
             )
             self._active_conversations[sid] = (c, 1)
