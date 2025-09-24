@@ -372,6 +372,7 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/docs',
             '/openapi.json',
             '/share/',
+            '/api/options/conversations/search',
         ]
 
         self.public_path_patterns = [
@@ -443,6 +444,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/options/use-cases',
             '/api/options/use-cases/conversations',
             '/api/options/conversations',
+            '/api/options/conversations/search',
             '/api/options/update-empty-titles',
             '/api/usecases',
             '/docs',

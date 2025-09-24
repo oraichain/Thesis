@@ -410,6 +410,32 @@ async def webhook_rag_conversation(
         return False
 
 
+async def refund_deepresearch_conversation(
+    conversation_id: str,
+) -> dict | None:
+    url = '/api/subcription/refund-credit-admin'
+    headers = {
+        'Content-Type': 'application/json',
+        'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
+    }
+    payload = {'conversationId': conversation_id, 'featureCode': 'deep_research'}
+    try:
+        async with httpx.AsyncClient(
+            base_url=os.getenv('THESIS_AUTH_SERVER_URL', ''),
+            timeout=30.0,
+        ) as client:
+            response = await client.post(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            logger.error(
+                f'Failed to refund conversation: {response.status_code} - {response.text}'
+            )
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        return response.json()
+    except Exception:
+        logger.exception('Unexpected error while refunding conversation')
+        return None
+
+
 async def delete_thread(
     conversation_id: str,
     bearer_token: str,

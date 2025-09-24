@@ -101,6 +101,7 @@ from openhands.server.mem0 import (
 )
 from openhands.server.thesis_auth import (
     check_feature_credit,
+    refund_deepresearch_conversation,
     search_knowledge,
     webhook_rag_conversation,
 )
@@ -145,6 +146,7 @@ class AgentController:
     raw_followup_conversation_id: str | None = None
     followup_conversation_events: list[dict] = []
     space_section_id: int | None = None
+    research_mode: ResearchMode | None = None
 
     def __init__(
         self,
@@ -232,6 +234,7 @@ class AgentController:
             set()
         )  # Initialize concurrent actions tracking
         print(f'raw_followup_conversation_id: {self.raw_followup_conversation_id}')
+        self.research_mode = None
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -342,6 +345,9 @@ class AgentController:
         from openhands.utils.final_result_extractor import save_final_result_to_database
 
         # Execute both operations concurrently
+        if self.research_mode == ResearchMode.DEEP_RESEARCH:
+            await refund_deepresearch_conversation(self.id)
+
         await asyncio.gather(
             save_final_result_to_database(self.id, error_result),
             self.set_agent_state_to(state),
@@ -678,6 +684,7 @@ class AgentController:
             # set pending_action while we search for information
 
             # if this is the first user message for this agent, matters for the microagent info type
+            self.research_mode = ResearchMode(action.mode) if action.mode else None
             if (
                 action.mode == ResearchMode.DEEP_RESEARCH
                 and self.user_id
