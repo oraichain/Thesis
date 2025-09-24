@@ -289,19 +289,20 @@ async def get_user_message_ids(
     from openhands.server.db import database
     from openhands.server.models import ConversationEvent
 
-    # Query ConversationEvent where conversation_id matches,
-    # metadata->'source' = 'user' and metadata->'action' = 'message'
+    # Use Postgres ->> operator to extract text from JSON
+    source_text = ConversationEvent.c.metadata.op('->>')('source')
+    action_text = ConversationEvent.c.metadata.op('->>')('action')
+
     query = (
         select(ConversationEvent.c.event_id)
         .where(
             ConversationEvent.c.conversation_id == conversation_id,
-            ConversationEvent.c.metadata['source'].astext == 'user',
-            ConversationEvent.c.metadata['action'].astext == 'message',
+            source_text == 'user',
+            action_text == 'message',
         )
         .order_by(ConversationEvent.c.event_id)
     )
     rows = await database.fetch_all(query)
-    # Return just the event_ids as a list
     return [row['event_id'] for row in rows]
 
 
