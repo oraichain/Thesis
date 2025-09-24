@@ -147,6 +147,7 @@ class AgentController:
     followup_conversation_events: list[dict] = []
     space_section_id: int | None = None
     research_mode: ResearchMode | None = None
+    latest_user_message_id: int | None = None
 
     def __init__(
         self,
@@ -235,6 +236,7 @@ class AgentController:
         )  # Initialize concurrent actions tracking
         print(f'raw_followup_conversation_id: {self.raw_followup_conversation_id}')
         self.research_mode = None
+        self.latest_user_message_id = None
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -346,7 +348,9 @@ class AgentController:
 
         # Execute both operations concurrently
         if self.research_mode == ResearchMode.DEEP_RESEARCH:
-            await refund_deepresearch_conversation(self.id)
+            await refund_deepresearch_conversation(
+                self.id, self.latest_user_message_id, {'error': self.state.last_error}
+            )
 
         await asyncio.gather(
             save_final_result_to_database(self.id, error_result),
@@ -685,6 +689,7 @@ class AgentController:
 
             # if this is the first user message for this agent, matters for the microagent info type
             self.research_mode = ResearchMode(action.mode) if action.mode else None
+            self.latest_user_message_id = action.id
             if (
                 action.mode == ResearchMode.DEEP_RESEARCH
                 and self.user_id

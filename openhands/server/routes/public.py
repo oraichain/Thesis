@@ -279,6 +279,32 @@ async def get_conversation_events(
     return result
 
 
+@app.get('/conversations/user-message-ids/{conversation_id}')
+async def get_user_message_ids(
+    conversation_id: str,
+    x_key_oh: str = Depends(verify_thesis_backend_server),
+) -> Any:
+    from sqlalchemy import select
+
+    from openhands.server.db import database
+    from openhands.server.models import ConversationEvent
+
+    # Query ConversationEvent where conversation_id matches,
+    # metadata->'source' = 'user' and metadata->'action' = 'message'
+    query = (
+        select(ConversationEvent.c.event_id)
+        .where(
+            ConversationEvent.c.conversation_id == conversation_id,
+            ConversationEvent.c.metadata['source'].astext == 'user',
+            ConversationEvent.c.metadata['action'].astext == 'message',
+        )
+        .order_by(ConversationEvent.c.event_id)
+    )
+    rows = await database.fetch_all(query)
+    # Return just the event_ids as a list
+    return [row['event_id'] for row in rows]
+
+
 @app.get('/conversations/list-files-internal/{conversation_id}')
 async def list_files(
     conversation_id: str,

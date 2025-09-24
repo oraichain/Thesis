@@ -380,6 +380,7 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations/events/',
             '/api/options/conversations/list-files-internal/',
             '/api/options/conversations/select-file-internal/',
+            '/api/options/conversations/user-message-ids/',
             '/share/',
         ]
 
@@ -457,6 +458,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations/events/',
             '/api/options/conversations/list-files-internal/',
             '/api/options/conversations/select-file-internal/',
+            '/api/options/conversations/user-message-ids/',
             '/share/',
         ]
 

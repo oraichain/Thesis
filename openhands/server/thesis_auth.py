@@ -412,13 +412,20 @@ async def webhook_rag_conversation(
 
 async def refund_deepresearch_conversation(
     conversation_id: str,
+    latest_user_message_id: int | None = None,
+    note: object | None = None,
 ) -> dict | None:
     url = '/api/subcription/refund-credit-admin'
     headers = {
         'Content-Type': 'application/json',
         'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
     }
-    payload = {'conversationId': conversation_id, 'featureCode': 'deep_research'}
+    payload = {
+        'conversationId': conversation_id,
+        'featureCode': 'deep_research',
+        'note': note,
+        'latestEventId': latest_user_message_id,
+    }
     try:
         async with httpx.AsyncClient(
             base_url=os.getenv('THESIS_AUTH_SERVER_URL', ''),
