@@ -53,17 +53,31 @@ class ConversationErrorResponse(BaseModel):
         description="Error status, always 'error' for failures", example='error'
     )
     message: str = Field(
-        description='Human-readable error message', example='Settings not found'
+        description='Human-readable error message',
+        example='Invalid request data or missing required fields',
     )
     msg_id: str = Field(
         description='Machine-readable error code for categorization',
-        example='CONFIGURATION$SETTINGS_NOT_FOUND',
+        example='INVALID_REQUEST_DATA',
     )
 
 
 class FastAPIErrorResponse(BaseModel):
     detail: str = Field(
-        description='Error details from FastAPI', example='Unauthorized'
+        description='Error details from FastAPI', example='Internal server error'
+    )
+
+
+class FastAPIResourceNotFoundErrorResponse(BaseModel):
+    detail: str = Field(
+        description='Error details from FastAPI', example='Resource not found'
+    )
+
+
+class FastAPIUnauthorizedErrorResponse(BaseModel):
+    detail: str = Field(
+        description='Error details from FastAPI',
+        example='Unauthorized or invalid token',
     )
 
 
@@ -111,25 +125,45 @@ conversation_router = APIRouter(
     prefix='/conversations',
     tags=['conversations'],
     responses={
-        401: {'description': 'Authentication required'},
-        404: {'description': 'Resource not found'},
-        500: {'description': 'Internal server error'},
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Resource not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
 chat_router = APIRouter(
     prefix='/chat_researchs',
     tags=['conversations'],
     responses={
-        401: {'description': 'Authentication required'},
-        500: {'description': 'Internal server error'},
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Resource not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
 deep_research_router = APIRouter(
     prefix='/deep_researchs',
     tags=['conversations'],
     responses={
-        401: {'description': 'Authentication required'},
-        500: {'description': 'Internal server error'},
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Resource not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
 
@@ -219,7 +253,11 @@ class CreateDeepResearchConversationIntegrationRequest(BaseModel):
         },
         401: {
             'description': 'Authentication token missing or invalid',
-            'model': ConversationErrorResponse,
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Resource not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
         },
         500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
@@ -321,13 +359,17 @@ async def integration_new_deep_research_conversation(
             'description': 'Conversation details retrieved successfully',
             'model': ConversationDetailResponse,
         },
+        400: {
+            'description': 'Invalid request data or missing required fields',
+            'model': ConversationErrorResponse,
+        },
         401: {
             'description': 'Authentication required to access conversation',
-            'model': FastAPIErrorResponse,
+            'model': FastAPIUnauthorizedErrorResponse,
         },
         404: {
             'description': 'Conversation not found or access denied',
-            'model': FastAPIErrorResponse,
+            'model': FastAPIResourceNotFoundErrorResponse,
         },
         500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
@@ -557,16 +599,19 @@ class JoinConversationIntegrationRequest(BaseModel):
         },
         400: {
             'description': 'Missing required fields (conversation_id, system_prompt, research_mode, or user_prompt)',
-            'model': FastAPIErrorResponse,
+            'model': ConversationErrorResponse,
         },
         401: {
             'description': 'Invalid or missing Bearer token in Authorization header',
-            'model': FastAPIErrorResponse,
+            'model': FastAPIUnauthorizedErrorResponse,
         },
-        404: {'description': 'Conversation not found', 'model': FastAPIErrorResponse},
+        404: {
+            'description': 'Conversation not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
         500: {
             'description': 'Failed to establish streaming connection',
-            'model': FastAPIErrorResponse,
+            'model': ConversationErrorResponse,
         },
     },
 )

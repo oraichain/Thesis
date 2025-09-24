@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -209,9 +209,13 @@ class Member(BaseModel):
 
 
 class TelegramGroupDetail(BaseModel):
-    id: str = Field(description='Telegram group ID', example='180')
-    chatId: str = Field(description='Telegram chat ID', example='1234567890')
-    spaceId: str = Field(description='Space ID', example='868')
+    id: Optional[str] = Field(
+        description='Telegram group ID', example='180', default=None
+    )
+    chatId: Optional[str] = Field(
+        description='Telegram chat ID', example='1234567890', default=None
+    )
+    spaceId: Optional[str] = Field(description='Space ID', example='868', default=None)
     groupTitle: Optional[str] = Field(
         description='Telegram group title',
         default=None,
@@ -307,7 +311,9 @@ class SpaceDetail(BaseModel):
         description='Space UUID', default=None, example='THESISSPACE1234567890'
     )
     avatarUrl: Optional[str] = Field(description='Avatar URL', default=None)
-    social: Optional[str] = Field(description='Social links', default=None)
+    social: Optional[Union[str, dict[str, str]]] = Field(
+        description='Social links', default=None
+    )
     spaceType: Optional[str] = Field(description='Space type', default=None)
     inCampaign: Optional[bool] = Field(
         description='In campaign status', default=None, example=False
@@ -383,7 +389,26 @@ class SpaceSectionsResponse(BaseModel):
 
 class FastAPIErrorResponse(BaseModel):
     detail: str = Field(
+        description='Error details from FastAPI', example='Internal server error'
+    )
+
+
+class FastAPIUnauthorizedErrorResponse(BaseModel):
+    detail: str = Field(
         description='Error details from FastAPI', example='Unauthorized'
+    )
+
+
+class FastAPIResourceNotFoundErrorResponse(BaseModel):
+    detail: str = Field(
+        description='Error details from FastAPI', example='Resource not found'
+    )
+
+
+class SpaceErrorResponse(BaseModel):
+    detail: str = Field(
+        description='Error details from FastAPI',
+        example='Invalid request data or missing required fields',
     )
 
 
@@ -391,10 +416,19 @@ space_router = APIRouter(
     prefix='/spaces',
     tags=['spaces'],
     responses={
-        200: {'description': 'Spaces retrieved successfully'},
-        401: {'description': 'Authentication required'},
-        404: {'description': 'Resource not found'},
-        500: {'description': 'Internal server error'},
+        400: {
+            'description': 'Invalid request data or missing required fields',
+            'model': SpaceErrorResponse,
+        },
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Resource not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
+        500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
 
@@ -410,7 +444,14 @@ space_router = APIRouter(
             'description': 'Spaces retrieved successfully',
             'model': SpaceListResponse,
         },
-        401: {'description': 'Authentication required', 'model': FastAPIErrorResponse},
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Resource not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
         500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
@@ -444,8 +485,18 @@ async def get_list_space(
             'description': 'Space details retrieved successfully',
             'model': SpaceDetailResponse,
         },
-        401: {'description': 'Authentication required', 'model': FastAPIErrorResponse},
-        404: {'description': 'Space not found', 'model': FastAPIErrorResponse},
+        400: {
+            'description': 'Invalid request data or missing required fields',
+            'model': SpaceErrorResponse,
+        },
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Space not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
         500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
@@ -479,8 +530,18 @@ async def get_space_detail(
             'description': 'Space sections retrieved successfully',
             'model': SpaceSectionsResponse,
         },
-        401: {'description': 'Authentication required', 'model': FastAPIErrorResponse},
-        404: {'description': 'Space not found', 'model': FastAPIErrorResponse},
+        400: {
+            'description': 'Invalid request data or missing required fields',
+            'model': SpaceErrorResponse,
+        },
+        401: {
+            'description': 'Authentication required',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Space not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
         500: {'description': 'Internal server error', 'model': FastAPIErrorResponse},
     },
 )
