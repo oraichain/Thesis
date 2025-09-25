@@ -148,6 +148,7 @@ class AgentController:
     space_section_id: int | None = None
     research_mode: ResearchMode | None = None
     latest_user_message_id: int | None = None
+    is_refunded: bool = False
 
     def __init__(
         self,
@@ -346,16 +347,17 @@ class AgentController:
         error_result = json.dumps({'error': self.state.last_error})
         from openhands.utils.final_result_extractor import save_final_result_to_database
 
-        # Execute both operations concurrently
-        if self.research_mode == ResearchMode.DEEP_RESEARCH:
-            await refund_deepresearch_conversation(
-                self.id, self.latest_user_message_id, {'error': self.state.last_error}
-            )
-
         await asyncio.gather(
             save_final_result_to_database(self.id, error_result),
             self.set_agent_state_to(state),
         )
+        # Execute both operations concurrently
+        if self.research_mode == ResearchMode.DEEP_RESEARCH and not self.is_refunded:
+            self.is_refunded = True
+            await refund_deepresearch_conversation(
+                self.id, self.latest_user_message_id, {'error': self.state.last_error}
+            )
+            self.is_refunded = False
 
     def step(self):
         asyncio.create_task(self._step_with_exception_handling())
