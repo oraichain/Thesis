@@ -148,7 +148,7 @@ class AgentController:
     space_section_id: int | None = None
     research_mode: ResearchMode | None = None
     latest_user_message_id: int | None = None
-    is_refunded: bool = False
+    refunded_by_message_id: dict[int, bool] = {}
 
     def __init__(
         self,
@@ -351,13 +351,21 @@ class AgentController:
             save_final_result_to_database(self.id, error_result),
             self.set_agent_state_to(state),
         )
-        # Execute both operations concurrently
-        if self.research_mode == ResearchMode.DEEP_RESEARCH and not self.is_refunded:
-            self.is_refunded = True
-            await refund_deepresearch_conversation(
-                self.id, self.latest_user_message_id, {'error': self.state.last_error}
+        # Refund once per latest_user_message_id
+        if (
+            self.research_mode == ResearchMode.DEEP_RESEARCH
+            and self.latest_user_message_id is not None
+        ):
+            already = self.refunded_by_message_id.get(
+                self.latest_user_message_id, False
             )
-            self.is_refunded = False
+            if not already:
+                self.refunded_by_message_id[self.latest_user_message_id] = True
+                await refund_deepresearch_conversation(
+                    self.id,
+                    self.latest_user_message_id,
+                    {'error': self.state.last_error},
+                )
 
     def step(self):
         asyncio.create_task(self._step_with_exception_handling())
