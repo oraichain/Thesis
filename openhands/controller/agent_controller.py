@@ -148,7 +148,7 @@ class AgentController:
     space_section_id: int | None = None
     research_mode: ResearchMode | None = None
     latest_user_message_id: int | None = None
-    refunded_by_message_id: dict[int, bool] = {}
+    refunded_by_message_id: dict[tuple[str, int], bool] = {}
 
     def __init__(
         self,
@@ -351,16 +351,15 @@ class AgentController:
             save_final_result_to_database(self.id, error_result),
             self.set_agent_state_to(state),
         )
-        # Refund once per latest_user_message_id
+        # Refund once per (conversation_id, latest_user_message_id)
         if (
             self.research_mode == ResearchMode.DEEP_RESEARCH
             and self.latest_user_message_id is not None
         ):
-            already = self.refunded_by_message_id.get(
-                self.latest_user_message_id, False
-            )
+            refund_key = (self.id, self.latest_user_message_id)
+            already = self.refunded_by_message_id.get(refund_key, False)
             if not already:
-                self.refunded_by_message_id[self.latest_user_message_id] = True
+                self.refunded_by_message_id[refund_key] = True
                 await refund_deepresearch_conversation(
                     self.id,
                     self.latest_user_message_id,
