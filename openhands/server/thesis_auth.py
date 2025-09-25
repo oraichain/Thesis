@@ -10,7 +10,6 @@ from fastapi import HTTPException, status
 from pydantic import BaseModel
 
 from openhands.core.logger import openhands_logger as logger
-from openhands.core.schema.research import ResearchMode
 
 load_dotenv()
 
@@ -285,7 +284,7 @@ async def create_thread(
         payload['forkById'] = str(follow_up_id)
     if followup_discover_id is not None:
         payload['followupDiscoverId'] = followup_discover_id
-    if research_mode is not None and research_mode == ResearchMode.FOLLOW_UP:
+    if research_mode is not None:
         payload['researchMode'] = research_mode
     try:
         response = await thesis_auth_client.post(url, headers=headers, json=payload)
