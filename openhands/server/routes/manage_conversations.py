@@ -20,8 +20,10 @@ from pydantic import BaseModel
 from openhands.core.config.llm_config import LLMConfig
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.schema.research import ResearchMode
+from openhands.events.action.files import FileReadAction
 from openhands.events.action.message import MessageAction
 from openhands.events.event_store import EventStore
+from openhands.events.observation.files import FileReadObservation
 from openhands.integrations.provider import (
     PROVIDER_TOKEN_TYPE,
 )
@@ -55,12 +57,15 @@ from openhands.server.types import LLMAuthenticationError, MissingSettingsError
 from openhands.shared import get_hash
 from openhands.storage.data_models.conversation_metadata import ConversationMetadata
 from openhands.storage.data_models.conversation_status import ConversationStatus
-from openhands.utils.async_utils import wait_all
+from openhands.utils.async_utils import call_sync_from_async, wait_all
 from openhands.utils.conversation_summary import (
     generate_conversation_title,
     get_default_conversation_title,
 )
-from openhands.utils.final_result_extractor import get_final_result_from_conversation
+from openhands.utils.final_result_extractor import (
+    get_final_result_from_conversation,
+    save_final_result_to_database,
+)
 from openhands.utils.get_user_setting import get_user_setting
 
 app = APIRouter(prefix='/api')
@@ -659,9 +664,87 @@ async def update_conversation(
         )
 
 
+async def _get_final_result_from_mcp_files(conversation_id: str) -> str | None:
+    """
+    Try to get final result from .md files created by MCP tools.
+    This is a fallback when no final result is found in event stream.
+    """
+    try:
+        # Get conversation to access runtime
+        conversation = await conversation_module._get_conversation_by_id(
+            conversation_id
+        )
+        if not conversation:
+            return None
+
+        # Attach to conversation session to get runtime
+        session = await conversation_manager.attach_to_conversation(
+            conversation_id, conversation.user_id
+        )
+        if not session or not session.runtime:
+            return None
+
+        try:
+            # List all files in the workspace
+            file_list = await call_sync_from_async(session.runtime.list_files, None)
+
+            # Filter for .md files
+            md_files = [f for f in file_list if f.endswith('.md')]
+
+            if not md_files:
+                logger.debug(f'No .md files found for conversation {conversation_id}')
+                return None
+
+            # Try to read content from .md files (prioritize by name patterns)
+            for md_file in sorted(md_files):
+                try:
+                    # Construct full path
+                    full_path = os.path.join(
+                        session.runtime.config.workspace_mount_path_in_sandbox or '',
+                        session.runtime.sid,
+                        md_file,
+                    )
+
+                    # Read file content
+                    read_action = FileReadAction(full_path)
+                    observation = await call_sync_from_async(
+                        session.runtime.run_action, read_action
+                    )
+
+                    if (
+                        isinstance(observation, FileReadObservation)
+                        and observation.content
+                    ):
+                        content = observation.content.strip()
+                        if content:  # Only return non-empty content
+                            logger.info(f'Found final result in .md file: {md_file}')
+                            return content
+
+                except Exception as e:
+                    logger.debug(f'Error reading .md file {md_file}: {e}')
+                    continue
+
+        finally:
+            # Always detach from conversation
+            await conversation_manager.detach_from_conversation(session)
+
+    except Exception as e:
+        logger.error(f'Error getting final result from MCP files: {e}')
+
+    return None
+
+
 @app.get('/conversations/{conversation_id}/final-result')
 async def get_final_result(conversation_id: str, request: Request) -> str | None:
     try:
+        # Try to get from MCP-created .md files first (more accurate for MCP-generated results)
+        logger.info(f'Trying MCP files first for conversation {conversation_id}')
+        final_result = await _get_final_result_from_mcp_files(conversation_id)
+
+        if final_result:
+            await save_final_result_to_database(conversation_id, final_result)
+            logger.info(f'Final result from MCP files: {final_result}')
+            return final_result
         # First try to get from database
         conversation = await conversation_module._get_conversation_by_id(
             conversation_id
@@ -669,21 +752,23 @@ async def get_final_result(conversation_id: str, request: Request) -> str | None
         if conversation and conversation.final_result:
             return conversation.final_result
 
-        # Get the conversation store to access event stream
-        # eventstore
+        # Fallback to event stream if no MCP result found
+        logger.info(
+            f'No MCP result found, trying event stream for conversation {conversation_id}'
+        )
         event_store = EventStore(
             conversation_id,
             conversation_manager.file_store,
             conversation.user_id,
         )
-        # is_running = await conversation_manager.is_agent_loop_running(conversation_id)
-        # if not is_running:
+
         final_result = await get_final_result_from_conversation(
             conversation_id=conversation_id,
             event_stream=event_store,
             save_to_database=True,
         )
-        logger.info(f'Final result from event store: {final_result}')
+
+        logger.info(f'Final result from event stream: {final_result}')
         return final_result
 
         # If conversation is still running, return None as there's no final result yet
