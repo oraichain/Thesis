@@ -94,9 +94,6 @@ psycopg_pool = "^3.2.0"
 tree_sitter_languages = "^1.10.2"
 
 json-schema-to-pydantic = "0.2.3"
-autogen_core = { git = "https://github.com/oraichain/autogen.git", subdirectory = "python/packages/autogen-core" }
-autogen_agentchat = { git = "https://github.com/oraichain/autogen.git", subdirectory = "python/packages/autogen-agentchat" }
-autogen_ext = { git = "https://github.com/oraichain/autogen.git", subdirectory = "python/packages/autogen-ext" }
 opentelemetry-distro = "<0.53b1"
 opentelemetry-instrumentation-asyncio = "0.46b0"
 opentelemetry-instrumentation-aws-lambda = "0.46b0"
