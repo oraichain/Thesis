@@ -234,7 +234,11 @@ class CodeActAgent(Agent):
         return selected_tools
 
     async def _handle_streaming_response(
-        self, streaming_response, tools: list[dict], research_mode: str | None
+        self,
+        streaming_response,
+        tools: list[dict],
+        research_mode: str | None,
+        latest_user_message: str | None,
     ):
         """Handle streaming response - both accumulate in pending_actions AND yield chunks immediately"""
         # Accumulate streaming data
@@ -430,6 +434,7 @@ class CodeActAgent(Agent):
                         self.workspace_mount_path_in_sandbox_store_in_session,
                         tools,
                         False,
+                        latest_user_message,
                     )
 
                     for action in actions:
@@ -806,6 +811,7 @@ class CodeActAgent(Agent):
                 response,
                 params['tools'],
                 research_mode,
+                latest_user_message.content if latest_user_message else None,
             )
             if self.pending_actions:
                 actions = list(self.pending_actions.copy())
