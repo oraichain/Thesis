@@ -824,6 +824,9 @@ class CodeActAgent(Agent):
                 state.session_id,
                 self.workspace_mount_path_in_sandbox_store_in_session,
                 tools=params['tools'],
+                latest_user_message=latest_user_message.content
+                if latest_user_message
+                else None,
             )
             logger.debug(f'Actions after response_to_actions: {actions}')
             return actions

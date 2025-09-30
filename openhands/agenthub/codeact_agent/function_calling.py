@@ -6,6 +6,7 @@ This is similar to the functionality of `CodeActResponseParser`.
 import json
 
 from litellm import (
+    ChatCompletionMessageToolCall,
     ChatCompletionToolParam,
     ModelResponse,
 )
@@ -199,11 +200,12 @@ built_in_tools = {
 
 
 def _parse_tool_call(
-    tool_call,
+    tool_call: ChatCompletionMessageToolCall,
     sid: str | None,
     workspace_mount_path_in_sandbox_store_in_session: bool,
     tools: list[dict] | None,
     enable_think: bool,
+    latest_user_message: str | None,
 ) -> Action:
     """Parse a single tool call into an action."""
     try:
@@ -232,6 +234,19 @@ def _parse_tool_call(
                 arguments['sessionId'] = (
                     sid  # Always use session ID for deterministic results
                 )
+            # if it's X AI search or crypto insights -> pass latest user message to the MCP tool instead
+            if (
+                original_action_name == 'tweet_ai_search_tool'
+                and 'user_prompt' in arguments
+                and latest_user_message
+            ):
+                arguments['user_prompt'] = latest_user_message
+            elif (
+                original_action_name == 'crypto_insights_service_tool'
+                and 'user_prompt' in arguments
+                and latest_user_message
+            ):
+                arguments['user_prompt'] = latest_user_message
             return McpAction(
                 name=original_action_name,
                 arguments=json.dumps(arguments),
@@ -287,6 +302,7 @@ def response_to_actions(
     workspace_mount_path_in_sandbox_store_in_session: bool = True,
     tools: list[dict] | None = None,
     enable_think: bool = True,
+    latest_user_message: str | None = None,
 ) -> list[Action]:
     actions: list[Action] = []
     assert len(response.choices) == 1, 'Only one choice is supported for now'
@@ -312,6 +328,7 @@ def response_to_actions(
                 workspace_mount_path_in_sandbox_store_in_session,
                 tools,
                 enable_think,
+                latest_user_message,
             )
 
             # We only add thought to the first action
