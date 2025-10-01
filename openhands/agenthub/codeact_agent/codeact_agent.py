@@ -1009,8 +1009,8 @@ class CodeActAgent(Agent):
                 'name': 'get_current_date',
             },
         ]
-        # if add_cache_control:
-        #     messages[-1]['cache_control'] = {'type': 'ephemeral'}
+        if add_cache_control:
+            messages[-1]['cache_control'] = {'type': 'ephemeral'}
         return messages
 
     def _handle_format_output(self) -> str:
