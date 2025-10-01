@@ -25,6 +25,7 @@ from openhands.events.action import (
     StreamingMessageAction,
 )
 from openhands.events.action.init_pyodide import InitPyodideAction
+from openhands.events.action.mcp import McpAction
 from openhands.events.action.message import MessageAction
 from openhands.events.event import Event, EventSource
 from openhands.llm.llm import LLM, check_tools
@@ -238,7 +239,6 @@ class CodeActAgent(Agent):
         streaming_response,
         tools: list[dict],
         research_mode: str | None,
-        latest_user_message: str | None,
     ):
         """Handle streaming response - both accumulate in pending_actions AND yield chunks immediately"""
         # Accumulate streaming data
@@ -416,9 +416,11 @@ class CodeActAgent(Agent):
                             {
                                 'message': {
                                     'role': 'assistant',
-                                    'content': accumulated_content
-                                    if accumulated_content
-                                    else None,
+                                    'content': (
+                                        accumulated_content
+                                        if accumulated_content
+                                        else None
+                                    ),
                                     'tool_calls': formatted_tool_calls,
                                 },
                                 'index': 0,
@@ -434,7 +436,6 @@ class CodeActAgent(Agent):
                         self.workspace_mount_path_in_sandbox_store_in_session,
                         tools,
                         False,
-                        latest_user_message,
                     )
 
                     for action in actions:
@@ -675,6 +676,7 @@ class CodeActAgent(Agent):
         - MessageAction(content) - Message action to run (e.g. ask for clarification)
         - AgentFinishAction() - end the interaction
         """
+        actions: list[Action] | None = None
         if self.session_id is None:
             self.session_id = state.session_id
         # Continue with pending actions if any
@@ -811,7 +813,6 @@ class CodeActAgent(Agent):
                 response,
                 params['tools'],
                 research_mode,
-                latest_user_message.content if latest_user_message else None,
             )
             if self.pending_actions:
                 actions = list(self.pending_actions.copy())
@@ -819,27 +820,16 @@ class CodeActAgent(Agent):
                     f'Returning first of {len(self.pending_actions)} pending actions from streaming'
                 )
                 self.pending_actions.clear()
-                return actions
-                # logger.info(
-                #     f'Returning first of {len(self.pending_actions)} pending actions from streaming'
-                # )
-                # return self.pending_actions.popleft()
         else:
             actions = codeact_function_calling.response_to_actions(
                 response,
                 state.session_id,
                 self.workspace_mount_path_in_sandbox_store_in_session,
                 tools=params['tools'],
-                latest_user_message=latest_user_message.content
-                if latest_user_message
-                else None,
             )
             logger.debug(f'Actions after response_to_actions: {actions}')
-            return actions
-            # for action in actions:
-            #     self.pending_actions.append(action)
-            # return self.pending_actions.popleft()
-        return None
+
+        return self._optimize_ai_search_tool_call(actions, state, latest_user_message)
 
     def setup_replay_script(
         self, formatted_messages: list[dict[Any, Any]]
@@ -1019,8 +1009,8 @@ class CodeActAgent(Agent):
                 'name': 'get_current_date',
             },
         ]
-        if add_cache_control:
-            messages[-1]['cache_control'] = {'type': 'ephemeral'}
+        # if add_cache_control:
+        #     messages[-1]['cache_control'] = {'type': 'ephemeral'}
         return messages
 
     def _handle_format_output(self) -> str:
@@ -1073,3 +1063,85 @@ For EVERY user query, you MUST first analyze the knowledge base using this frame
 **Note**: This protocol applies to ALL user queries without exception. Always check the knowledge base tags first.This evaluation enforces precise, tool-assisted reasoning with no tolerance for silent failure due to missing data.
 """
         return ''
+
+    def _update_mcp_user_prompt(
+        self, action: McpAction, latest_user_message: MessageAction | None
+    ) -> None:
+        """Helper to safely update user_prompt in MCP action arguments."""
+        if not latest_user_message or not latest_user_message.content:
+            return
+
+        try:
+            # Parse and update arguments
+            if action.arguments is None:
+                return
+            args = json.loads(action.arguments)
+            args['user_prompt'] = latest_user_message.content
+            action.arguments = json.dumps(args)
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            logger.warning(f'Failed to update MCP user_prompt: {e}')
+
+    def _optimize_ai_search_tool_call(
+        self,
+        _actions: list[Action] | None,
+        state: State,
+        latest_user_message: MessageAction | None,
+    ) -> list[Action] | None:
+        if _actions is None:
+            return None
+
+        # Deep copy to avoid mutating original actions when updating arguments
+        actions = deepcopy(_actions)
+        if not actions:
+            return actions
+
+        tweet_ai_search_indexes: list[int] = []
+        crypto_insights_service_indexes: list[int] = []
+
+        # Collect indices and update arguments
+        for i, action in enumerate(actions):
+            if isinstance(action, McpAction):
+                if action.name == 'tweet_ai_search_tool':
+                    # Override first occurrence only
+                    if len(tweet_ai_search_indexes) == 0:
+                        self._update_mcp_user_prompt(action, latest_user_message)
+                    tweet_ai_search_indexes.append(i)
+
+                elif action.name == 'crypto_insights_service_tool':
+                    # Override first occurrence only
+                    if len(crypto_insights_service_indexes) == 0:
+                        self._update_mcp_user_prompt(action, latest_user_message)
+                    crypto_insights_service_indexes.append(i)
+
+        # Collect all indices to remove
+        indices_to_remove = []
+
+        # Handle tweet AI search tools (SEPARATE if block)
+        if state.has_tweet_ai_search_tool_call():
+            # Already called before - remove ALL new instances
+            indices_to_remove.extend(tweet_ai_search_indexes)
+        elif len(tweet_ai_search_indexes) > 1:
+            # Not called before - keep FIRST, remove rest
+            indices_to_remove.extend(tweet_ai_search_indexes[1:])
+
+        # Handle crypto insights tools (SEPARATE if block - NOT elif!)
+        if state.has_crypto_insights_service_tool_call():
+            # Already called before - remove ALL new instances
+            indices_to_remove.extend(crypto_insights_service_indexes)
+        elif len(crypto_insights_service_indexes) > 1:
+            # Not called before - keep FIRST, remove rest
+            indices_to_remove.extend(crypto_insights_service_indexes[1:])
+
+        # Remove all collected indices in reverse order to avoid index shifting
+        for index in sorted(set(indices_to_remove), reverse=True):
+            actions.pop(index)
+
+        # If optimization removed all actions, revert to original
+        # Having something is better than nothing
+        if len(actions) == 0:
+            logger.warning(
+                'All actions were removed during optimization. Reverting to original actions.'
+            )
+            return deepcopy(_actions)
+
+        return actions

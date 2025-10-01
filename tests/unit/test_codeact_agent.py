@@ -1029,3 +1029,353 @@ def test_stream_function_message_concurrent_calls(agent: CodeActAgent):
 
     # Both should emit content
     assert agent.event_stream.add_event.call_count == 2
+
+
+# Tests for _optimize_ai_search_tool_call
+
+
+def test_optimize_ai_search_tool_call_with_none_actions(agent: CodeActAgent):
+    """Test that None actions returns None."""
+    mock_state = Mock(spec=State)
+    result = agent._optimize_ai_search_tool_call(None, mock_state, None)
+    assert result is None
+
+
+def test_optimize_ai_search_tool_call_with_empty_actions(agent: CodeActAgent):
+    """Test that empty actions list returns empty list."""
+    mock_state = Mock(spec=State)
+    result = agent._optimize_ai_search_tool_call([], mock_state, None)
+    assert result == []
+
+
+def test_optimize_ai_search_tool_call_no_mcp_actions(agent: CodeActAgent):
+    """Test optimization with no MCP actions returns actions unchanged."""
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    # Non-MCP actions
+    actions = [
+        CmdRunAction(command='ls'),
+        MessageAction(content='test'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+    assert len(result) == 2
+    assert isinstance(result[0], CmdRunAction)
+    assert isinstance(result[1], MessageAction)
+
+
+def test_optimize_ai_search_tool_call_first_tweet_search_updates_prompt(
+    agent: CodeActAgent,
+):
+    """Test that first tweet search tool gets user prompt updated."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    user_message = MessageAction(content='What is the latest news?')
+
+    tweet_action = McpAction(name='tweet_ai_search_tool', arguments='{"query": "test"}')
+    actions = [tweet_action]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, user_message)
+
+    assert len(result) == 1
+    # Check that user_prompt was added to arguments
+    import json
+
+    args = json.loads(result[0].arguments)
+    assert 'user_prompt' in args
+    assert args['user_prompt'] == 'What is the latest news?'
+
+
+def test_optimize_ai_search_tool_call_removes_duplicate_tweet_searches(
+    agent: CodeActAgent,
+):
+    """Test that duplicate tweet searches are removed, keeping only the first."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    user_message = MessageAction(content='test prompt')
+
+    # Create 3 tweet search actions
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test1"}'),
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test2"}'),
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test3"}'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, user_message)
+
+    # Should keep only the first one
+    assert len(result) == 1
+    assert result[0].name == 'tweet_ai_search_tool'
+
+
+def test_optimize_ai_search_tool_call_removes_all_if_already_called(
+    agent: CodeActAgent,
+):
+    """Test that all tweet search tools are removed if already called before."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = True  # Already called
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test"}'),
+        CmdRunAction(command='ls'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Should remove tweet search, keep other action
+    assert len(result) == 1
+    assert isinstance(result[0], CmdRunAction)
+
+
+def test_optimize_ai_search_tool_call_crypto_insights_independent(
+    agent: CodeActAgent,
+):
+    """Test that crypto insights tools are handled independently from tweet tools."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = True
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    user_message = MessageAction(content='crypto news')
+
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test1"}'),
+        McpAction(name='crypto_insights_service_tool', arguments='{"query": "crypto"}'),
+        McpAction(
+            name='crypto_insights_service_tool', arguments='{"query": "crypto2"}'
+        ),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, user_message)
+
+    # Tweet search removed (already called), crypto tools deduplicated
+    assert len(result) == 1
+    assert result[0].name == 'crypto_insights_service_tool'
+
+
+def test_optimize_ai_search_tool_call_both_tools_already_called(agent: CodeActAgent):
+    """Test both tools removed when both were already called."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = True
+    mock_state.has_crypto_insights_service_tool_call.return_value = True
+
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test"}'),
+        McpAction(name='crypto_insights_service_tool', arguments='{"query": "crypto"}'),
+        CmdRunAction(command='ls'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Both MCP tools removed, only CmdRunAction remains
+    assert len(result) == 1
+    assert isinstance(result[0], CmdRunAction)
+
+
+def test_optimize_ai_search_tool_call_reverts_if_all_removed(agent: CodeActAgent):
+    """Test that original actions are returned if optimization removes everything."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = True
+    mock_state.has_crypto_insights_service_tool_call.return_value = True
+
+    # Only MCP actions that will be removed
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test"}'),
+        McpAction(name='crypto_insights_service_tool', arguments='{"query": "crypto"}'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Should revert to original actions
+    assert len(result) == 2
+    assert result[0].name == 'tweet_ai_search_tool'
+    assert result[1].name == 'crypto_insights_service_tool'
+
+
+def test_optimize_ai_search_tool_call_does_not_mutate_original(agent: CodeActAgent):
+    """Test that original actions are not mutated during optimization."""
+    import json
+
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    user_message = MessageAction(content='new prompt')
+
+    original_args = '{"query": "test"}'
+    tweet_action = McpAction(name='tweet_ai_search_tool', arguments=original_args)
+    actions = [tweet_action]
+
+    # Store original arguments
+    original_action_args = actions[0].arguments
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, user_message)
+
+    # Original action should NOT be mutated (deep copy protection)
+    assert actions[0].arguments == original_action_args
+    assert 'user_prompt' not in json.loads(actions[0].arguments)
+
+    # Result should have updated arguments
+    assert 'user_prompt' in json.loads(result[0].arguments)
+
+
+def test_optimize_ai_search_tool_call_mixed_actions_preserves_order(
+    agent: CodeActAgent,
+):
+    """Test that non-MCP actions maintain their order and position."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    actions = [
+        CmdRunAction(command='ls'),
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test1"}'),
+        MessageAction(content='middle'),
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test2"}'),
+        CmdRunAction(command='pwd'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Should have: ls, tweet (first only), middle, pwd
+    assert len(result) == 4
+    assert isinstance(result[0], CmdRunAction)
+    assert result[0].command == 'ls'
+    assert isinstance(result[1], McpAction)
+    assert isinstance(result[2], MessageAction)
+    assert isinstance(result[3], CmdRunAction)
+    assert result[3].command == 'pwd'
+
+
+def test_optimize_ai_search_tool_call_none_user_message(agent: CodeActAgent):
+    """Test optimization works with None user message."""
+    import json
+
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test"}'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Should work but not add user_prompt
+    assert len(result) == 1
+    args = json.loads(result[0].arguments)
+    # user_prompt should not be added or should remain unchanged
+    assert 'query' in args
+
+
+def test_optimize_ai_search_tool_call_empty_user_message_content(agent: CodeActAgent):
+    """Test optimization with empty user message content."""
+
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    user_message = MessageAction(content='')
+
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "test"}'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, user_message)
+
+    # Should work but not add user_prompt for empty content
+    assert len(result) == 1
+
+
+def test_optimize_ai_search_tool_call_invalid_json_in_arguments(agent: CodeActAgent):
+    """Test handling of invalid JSON in MCP action arguments."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    user_message = MessageAction(content='test')
+
+    # Invalid JSON in arguments
+    tweet_action = McpAction(name='tweet_ai_search_tool', arguments='invalid json')
+    actions = [tweet_action]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, user_message)
+
+    # Should still return actions (error handled gracefully)
+    assert len(result) == 1
+
+
+def test_optimize_ai_search_tool_call_multiple_duplicates_all_removed_except_first(
+    agent: CodeActAgent,
+):
+    """Test that with many duplicates, only the first is kept."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    # Create 10 duplicate tweet searches
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments=f'{{"query": "test{i}"}}')
+        for i in range(10)
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Should keep only the first one
+    assert len(result) == 1
+    assert result[0].name == 'tweet_ai_search_tool'
+
+
+def test_optimize_ai_search_tool_call_interleaved_tools(agent: CodeActAgent):
+    """Test optimization with interleaved tweet and crypto tools."""
+    from openhands.events.action.mcp import McpAction
+
+    mock_state = Mock(spec=State)
+    mock_state.has_tweet_ai_search_tool_call.return_value = False
+    mock_state.has_crypto_insights_service_tool_call.return_value = False
+
+    actions = [
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "t1"}'),
+        McpAction(name='crypto_insights_service_tool', arguments='{"query": "c1"}'),
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "t2"}'),
+        McpAction(name='crypto_insights_service_tool', arguments='{"query": "c2"}'),
+        McpAction(name='tweet_ai_search_tool', arguments='{"query": "t3"}'),
+    ]
+
+    result = agent._optimize_ai_search_tool_call(actions, mock_state, None)
+
+    # Should keep first of each type
+    assert len(result) == 2
+    assert result[0].name == 'tweet_ai_search_tool'
+    assert result[1].name == 'crypto_insights_service_tool'

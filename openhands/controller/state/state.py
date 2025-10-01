@@ -15,6 +15,7 @@ from openhands.events.action import (
     MessageAction,
 )
 from openhands.events.action.agent import AgentFinishAction
+from openhands.events.action.mcp import McpAction
 from openhands.events.event import Event, EventSource
 from openhands.llm.metrics import Metrics
 from openhands.memory.view import View
@@ -286,6 +287,27 @@ class State:
             if isinstance(event, MessageAction) and event.source == EventSource.USER:
                 return event
         return None
+
+    def get_last_user_message_index(self) -> int | None:
+        for i, event in enumerate(reversed(self.view)):
+            if isinstance(event, MessageAction) and event.source == EventSource.USER:
+                return i
+        return None
+
+    def has_crypto_insights_service_tool_call(self) -> bool:
+        for event in self.view:
+            if (
+                isinstance(event, McpAction)
+                and event.name == 'crypto_insights_service_tool'
+            ):
+                return True
+        return False
+
+    def has_tweet_ai_search_tool_call(self) -> bool:
+        for event in self.view:
+            if isinstance(event, McpAction) and event.name == 'tweet_ai_search_tool':
+                return True
+        return False
 
     def to_llm_metadata(self, agent_name: str) -> dict:
         return {

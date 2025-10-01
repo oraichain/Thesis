@@ -234,19 +234,6 @@ def _parse_tool_call(
                 arguments['sessionId'] = (
                     sid  # Always use session ID for deterministic results
                 )
-            # if it's X AI search or crypto insights -> pass latest user message to the MCP tool instead
-            if (
-                original_action_name == 'tweet_ai_search_tool'
-                and 'user_prompt' in arguments
-                and latest_user_message
-            ):
-                arguments['user_prompt'] = latest_user_message
-            elif (
-                original_action_name == 'crypto_insights_service_tool'
-                and 'user_prompt' in arguments
-                and latest_user_message
-            ):
-                arguments['user_prompt'] = latest_user_message
             return McpAction(
                 name=original_action_name,
                 arguments=json.dumps(arguments),
