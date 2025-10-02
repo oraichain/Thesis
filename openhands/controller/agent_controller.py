@@ -147,8 +147,8 @@ class AgentController:
     raw_followup_conversation_id: str | None = None
     followup_conversation_events: list[dict] = []
     space_section_id: int | None = None
-    research_mode: ResearchMode | None = None
-    latest_user_message_id: int | None = None
+    research_mode: str | None = None
+    latest_user_message_id: int = 1
     refunded_by_message_id: dict[tuple[str, int], bool] = {}
 
     def __init__(
@@ -238,7 +238,7 @@ class AgentController:
         )  # Initialize concurrent actions tracking
         print(f'raw_followup_conversation_id: {self.raw_followup_conversation_id}')
         self.research_mode = None
-        self.latest_user_message_id = None
+        self.latest_user_message_id = 1
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -353,14 +353,17 @@ class AgentController:
             self.set_agent_state_to(state),
         )
         # Refund once per (conversation_id, latest_user_message_id)
-        if (
-            self.research_mode == ResearchMode.DEEP_RESEARCH
-            and self.latest_user_message_id is not None
-        ):
+        if self.research_mode == 'deep_research' and self.latest_user_message_id:
+            logger.debug(
+                f'Starting to Refunding deep research conversation: {self.id}, {self.latest_user_message_id}'
+            )
             refund_key = (self.id, self.latest_user_message_id)
             already = self.refunded_by_message_id.get(refund_key, False)
             if not already:
                 self.refunded_by_message_id[refund_key] = True
+                logger.debug(
+                    f'Refunding deep research conversation: {self.id}, {self.latest_user_message_id}'
+                )
                 await refund_deepresearch_conversation(
                     self.id,
                     self.latest_user_message_id,
@@ -700,8 +703,8 @@ class AgentController:
             # if this is the first user message for this agent, matters for the microagent info type
             if action.action == ActionType.MESSAGE:
                 logger.debug(f'action.mode: {action.mode}, conversation_id: {self.id}')
-                self.research_mode = ResearchMode(action.mode) if action.mode else None
-                self.latest_user_message_id = action.id
+                self.research_mode = action.mode
+                self.latest_user_message_id = int(action.id)
             if (
                 action.mode == ResearchMode.DEEP_RESEARCH
                 and self.user_id
