@@ -41,6 +41,7 @@ from openhands.core.logger import LOG_ALL_EVENTS
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message_utils import process_knowledge_base
 from openhands.core.schema import AgentState
+from openhands.core.schema.action import ActionType
 from openhands.core.schema.research import ResearchMode
 from openhands.evaluation import should_step_after_call_evaluation_endpoint
 from openhands.events import (
@@ -697,8 +698,10 @@ class AgentController:
             # set pending_action while we search for information
 
             # if this is the first user message for this agent, matters for the microagent info type
-            self.research_mode = ResearchMode(action.mode) if action.mode else None
-            self.latest_user_message_id = action.id
+            if action.action == ActionType.MESSAGE:
+                logger.debug(f'action.mode: {action.mode}, conversation_id: {self.id}')
+                self.research_mode = ResearchMode(action.mode) if action.mode else None
+                self.latest_user_message_id = action.id
             if (
                 action.mode == ResearchMode.DEEP_RESEARCH
                 and self.user_id
