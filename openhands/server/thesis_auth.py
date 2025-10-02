@@ -414,7 +414,7 @@ async def refund_deepresearch_conversation(
     conversation_id: str,
     latest_user_message_id: int | None = None,
     note: object | None = None,
-) -> dict | None:
+) -> bool:
     url = '/api/subcription/refund-credit-admin'
     headers = {
         'Content-Type': 'application/json',
@@ -425,8 +425,10 @@ async def refund_deepresearch_conversation(
         'featureCode': 'deep_research',
         'note': note,
         'latestEventId': latest_user_message_id,
+        'totalRefund': 1,
     }
     try:
+        logger.debug(f'Start refund deep research conversation: {payload}')
         async with httpx.AsyncClient(
             base_url=os.getenv('THESIS_AUTH_SERVER_URL', ''),
             timeout=30.0,
@@ -437,10 +439,12 @@ async def refund_deepresearch_conversation(
                 f'Failed to refund conversation: {response.status_code} - {response.text}'
             )
             raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
+        logger.debug(f'Refund deep research conversation response: {response.json()}')
+
+        return True
     except Exception:
         logger.exception('Unexpected error while refunding conversation')
-        return None
+        return False
 
 
 async def delete_thread(

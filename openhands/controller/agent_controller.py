@@ -355,20 +355,24 @@ class AgentController:
         # Refund once per (conversation_id, latest_user_message_id)
         if self.research_mode == 'deep_research' and self.latest_user_message_id:
             logger.debug(
-                f'Starting to Refunding deep research conversation: {self.id}, {self.latest_user_message_id}'
+                f'Starting refund for deep research conversation: {self.id}, latest_user_message_id={self.latest_user_message_id}'
             )
             refund_key = (self.id, self.latest_user_message_id)
             already = self.refunded_by_message_id.get(refund_key, False)
             if not already:
                 self.refunded_by_message_id[refund_key] = True
-                logger.debug(
-                    f'Refunding deep research conversation: {self.id}, {self.latest_user_message_id}'
-                )
-                await refund_deepresearch_conversation(
-                    self.id,
-                    self.latest_user_message_id,
-                    {'error': self.state.last_error},
-                )
+                try:
+                    logger.debug(
+                        f'Calling refund_deepresearch_conversation with note={self.state.last_error} id={self.id}, latest_user_message_id={self.latest_user_message_id}'
+                    )
+                    resp = await refund_deepresearch_conversation(
+                        self.id,
+                        self.latest_user_message_id,
+                        {'error': self.state.last_error},
+                    )
+                    logger.info(f'Refund API response: {resp}')
+                except Exception as e:
+                    logger.exception(f'Refund API call failed: {e}')
 
     def step(self):
         asyncio.create_task(self._step_with_exception_handling())
