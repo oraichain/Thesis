@@ -368,7 +368,11 @@ class AgentController:
                     resp = await refund_deepresearch_conversation(
                         self.id,
                         self.latest_user_message_id,
-                        {'error': self.state.last_error},
+                        {
+                            'error': self.state.last_error
+                            if len(self.state.last_error) < 200
+                            else self.state.last_error[:200]
+                        },
                     )
                     logger.info(f'Refund API response: {resp}')
                 except Exception as e:
