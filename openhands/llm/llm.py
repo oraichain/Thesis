@@ -79,6 +79,7 @@ FUNCTION_CALLING_SUPPORTED_MODELS = [
     'grok-3-mini',
     'grok-3-mini-beta',
     'skylark-prod-250415',
+    'llama-4-maverick',
 ]
 
 REASONING_EFFORT_SUPPORTED_MODELS = [
