@@ -4,7 +4,7 @@ import json
 import os
 import traceback
 import uuid
-from typing import Callable, ClassVar, Optional, Type
+from typing import Any, Awaitable, Callable, ClassVar, Optional, Type
 
 import litellm  # noqa
 from litellm.exceptions import (  # noqa
@@ -348,11 +348,12 @@ class AgentController:
         error_result = json.dumps({'error': self.state.last_error})
         from openhands.utils.final_result_extractor import save_final_result_to_database
 
-        await asyncio.gather(
-            save_final_result_to_database(self.id, error_result),
-            self.set_agent_state_to(state),
-        )
-        # Refund once per (conversation_id, latest_user_message_id)
+        # Build tasks to run concurrently
+        tasks: list[Awaitable[Any]] = []
+        tasks.append(save_final_result_to_database(self.id, error_result))
+        tasks.append(self.set_agent_state_to(state))
+
+        # Optionally add refund task (once per (conversation_id, latest_user_message_id))
         if self.research_mode == 'deep_research' and self.latest_user_message_id:
             logger.debug(
                 f'Starting refund for deep research conversation: {self.id}, latest_user_message_id={self.latest_user_message_id}'
@@ -361,11 +362,11 @@ class AgentController:
             already = self.refunded_by_message_id.get(refund_key, False)
             if not already:
                 self.refunded_by_message_id[refund_key] = True
-                try:
-                    logger.debug(
-                        f'Calling refund_deepresearch_conversation with note={self.state.last_error} id={self.id}, latest_user_message_id={self.latest_user_message_id}'
-                    )
-                    resp = await refund_deepresearch_conversation(
+                logger.debug(
+                    f'Calling refund_deepresearch_conversation with note={self.state.last_error} id={self.id}, latest_user_message_id={self.latest_user_message_id}'
+                )
+                tasks.append(
+                    refund_deepresearch_conversation(
                         self.id,
                         self.latest_user_message_id,
                         {
@@ -374,9 +375,16 @@ class AgentController:
                             else self.state.last_error[:200]
                         },
                     )
-                    logger.info(f'Refund API response: {resp}')
-                except Exception as e:
-                    logger.exception(f'Refund API call failed: {e}')
+                )
+
+        # Execute all tasks concurrently
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.exception(f'Error in concurrent task: {result}')
+        except Exception as e:
+            logger.exception(f'Error while awaiting concurrent tasks: {e}')
 
     def step(self):
         asyncio.create_task(self._step_with_exception_handling())
