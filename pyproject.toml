@@ -14,7 +14,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
-litellm = { git = "https://github.com/oraichain/litellm.git", rev = "fa7fc0dfe15d63c12e4e4e196070f4939d74f3f3" }
+litellm = { git = "https://github.com/oraichain/litellm.git", rev = "7eace1cab736cea88ad1081305839a7b5133ae95" }
 aiohttp = ">=3.9.0,!=3.11.13"                               # Pin to avoid yanked version 3.11.13
 google-generativeai = "*"                                   # To use litellm with Gemini Pro API
 google-api-python-client = "^2.164.0"                       # For Google Sheets API
