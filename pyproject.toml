@@ -14,7 +14,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
-litellm = { git = "https://github.com/oraichain/litellm.git", rev = "5cb6b148586b8f6f4c66fa4fb0872f72959f72f2" }
+litellm = { git = "https://github.com/oraichain/litellm.git", rev = "fa7fc0dfe15d63c12e4e4e196070f4939d74f3f3" }
 aiohttp = ">=3.9.0,!=3.11.13"                               # Pin to avoid yanked version 3.11.13
 google-generativeai = "*"                                   # To use litellm with Gemini Pro API
 google-api-python-client = "^2.164.0"                       # For Google Sheets API
@@ -94,9 +94,6 @@ psycopg_pool = "^3.2.0"
 tree_sitter_languages = "^1.10.2"
 
 json-schema-to-pydantic = "0.2.3"
-autogen_core = { git = "https://github.com/oraichain/autogen.git", subdirectory = "python/packages/autogen-core" }
-autogen_agentchat = { git = "https://github.com/oraichain/autogen.git", subdirectory = "python/packages/autogen-agentchat" }
-autogen_ext = { git = "https://github.com/oraichain/autogen.git", subdirectory = "python/packages/autogen-ext" }
 opentelemetry-distro = "<0.53b1"
 opentelemetry-instrumentation-asyncio = "0.46b0"
 opentelemetry-instrumentation-aws-lambda = "0.46b0"
