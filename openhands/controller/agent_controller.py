@@ -348,12 +348,6 @@ class AgentController:
         error_result = json.dumps({'error': self.state.last_error})
         from openhands.utils.final_result_extractor import save_final_result_to_database
 
-        # Build tasks to run concurrently
-        tasks: list[Awaitable[Any]] = []
-        tasks.append(save_final_result_to_database(self.id, error_result))
-        tasks.append(self.set_agent_state_to(state))
-
-        # Optionally add refund task (once per (conversation_id, latest_user_message_id))
         if self.research_mode == 'deep_research' and self.latest_user_message_id:
             logger.debug(
                 f'Starting refund for deep research conversation: {self.id}, latest_user_message_id={self.latest_user_message_id}'
@@ -365,17 +359,22 @@ class AgentController:
                 logger.debug(
                     f'Calling refund_deepresearch_conversation with note={self.state.last_error} id={self.id}, latest_user_message_id={self.latest_user_message_id}'
                 )
-                tasks.append(
-                    refund_deepresearch_conversation(
-                        self.id,
-                        self.latest_user_message_id,
-                        {
-                            'error': self.state.last_error
-                            if len(self.state.last_error) < 200
-                            else self.state.last_error[:200]
-                        },
-                    )
+                await refund_deepresearch_conversation(
+                    self.id,
+                    self.latest_user_message_id,
+                    {
+                        'error': self.state.last_error
+                        if len(self.state.last_error) < 200
+                        else self.state.last_error[:200]
+                    },
                 )
+
+        # Build tasks to run concurrently
+        tasks: list[Awaitable[Any]] = []
+        tasks.append(save_final_result_to_database(self.id, error_result))
+        tasks.append(self.set_agent_state_to(state))
+
+        # Optionally add refund task (once per (conversation_id, latest_user_message_id))
 
         # Execute all tasks concurrently
         try:
