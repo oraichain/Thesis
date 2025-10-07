@@ -530,14 +530,21 @@ async def get_thread_by_id(
 
 
 async def check_feature_credit(
-    user_id: str, feature_code: str, run_on_oh: bool = False
+    user_id: str,
+    feature_code: str,
+    run_on_oh: bool = False,
+    conversation_id: str | None = None,
 ) -> dict | None:
     url = '/api/subcription/check-pricing'
     headers = {
         'Content-Type': 'application/json',
         'x-key-oh': os.getenv('KEY_THESIS_BACKEND_SERVER'),
     }
-    payload = {'featureCode': feature_code, 'userId': user_id}
+    payload = {
+        'featureCode': feature_code,
+        'userId': user_id,
+        'conversationId': conversation_id,
+    }
     logger.debug(f'payload: {payload}')
     try:
         if os.getenv('RUN_MODE') == 'DEV':

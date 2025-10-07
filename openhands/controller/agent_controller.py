@@ -726,7 +726,10 @@ class AgentController:
                 and '/exit' not in action.content
             ):
                 check_credit = await check_feature_credit(
-                    self.user_id, 'deep_research', run_on_oh=True
+                    self.user_id,
+                    'deep_research',
+                    run_on_oh=True,
+                    conversation_id=self.id,
                 )
                 logger.debug(f'check_credit: {check_credit}')
                 if check_credit and not check_credit.get('data'):
