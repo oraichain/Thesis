@@ -4,7 +4,7 @@ import json
 import os
 import traceback
 import uuid
-from typing import Callable, ClassVar, Optional, Type
+from typing import Any, Awaitable, Callable, ClassVar, Optional, Type
 
 import litellm  # noqa
 from litellm.exceptions import (  # noqa
@@ -41,6 +41,7 @@ from openhands.core.logger import LOG_ALL_EVENTS
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message_utils import process_knowledge_base
 from openhands.core.schema import AgentState
+from openhands.core.schema.action import ActionType
 from openhands.core.schema.research import ResearchMode
 from openhands.evaluation import should_step_after_call_evaluation_endpoint
 from openhands.events import (
@@ -101,6 +102,7 @@ from openhands.server.mem0 import (
 )
 from openhands.server.thesis_auth import (
     check_feature_credit,
+    refund_deepresearch_conversation,
     search_knowledge,
     webhook_rag_conversation,
 )
@@ -145,6 +147,9 @@ class AgentController:
     raw_followup_conversation_id: str | None = None
     followup_conversation_events: list[dict] = []
     space_section_id: int | None = None
+    research_mode: str | None = None
+    latest_user_message_id: int = 1
+    refunded_by_message_id: dict[tuple[str, int], bool] = {}
 
     def __init__(
         self,
@@ -232,6 +237,8 @@ class AgentController:
             set()
         )  # Initialize concurrent actions tracking
         print(f'raw_followup_conversation_id: {self.raw_followup_conversation_id}')
+        self.research_mode = None
+        self.latest_user_message_id = 1
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -341,11 +348,42 @@ class AgentController:
         error_result = json.dumps({'error': self.state.last_error})
         from openhands.utils.final_result_extractor import save_final_result_to_database
 
-        # Execute both operations concurrently
-        await asyncio.gather(
-            save_final_result_to_database(self.id, error_result),
-            self.set_agent_state_to(state),
-        )
+        if self.research_mode == 'deep_research' and self.latest_user_message_id:
+            logger.debug(
+                f'Starting refund for deep research conversation: {self.id}, latest_user_message_id={self.latest_user_message_id}'
+            )
+            refund_key = (self.id, self.latest_user_message_id)
+            already = self.refunded_by_message_id.get(refund_key, False)
+            if not already:
+                self.refunded_by_message_id[refund_key] = True
+                logger.debug(
+                    f'Calling refund_deepresearch_conversation with note={self.state.last_error} id={self.id}, latest_user_message_id={self.latest_user_message_id}'
+                )
+                await refund_deepresearch_conversation(
+                    self.id,
+                    self.latest_user_message_id,
+                    {
+                        'error': self.state.last_error
+                        if len(self.state.last_error) < 200
+                        else self.state.last_error[:200]
+                    },
+                )
+
+        # Build tasks to run concurrently
+        tasks: list[Awaitable[Any]] = []
+        tasks.append(save_final_result_to_database(self.id, error_result))
+        tasks.append(self.set_agent_state_to(state))
+
+        # Optionally add refund task (once per (conversation_id, latest_user_message_id))
+
+        # Execute all tasks concurrently
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.exception(f'Error in concurrent task: {result}')
+        except Exception as e:
+            logger.exception(f'Error while awaiting concurrent tasks: {e}')
 
     def step(self):
         asyncio.create_task(self._step_with_exception_handling())
@@ -678,6 +716,10 @@ class AgentController:
             # set pending_action while we search for information
 
             # if this is the first user message for this agent, matters for the microagent info type
+            if action.action == ActionType.MESSAGE:
+                logger.debug(f'action.mode: {action.mode}, conversation_id: {self.id}')
+                self.research_mode = action.mode
+                self.latest_user_message_id = int(action.id)
             if (
                 action.mode == ResearchMode.DEEP_RESEARCH
                 and self.user_id

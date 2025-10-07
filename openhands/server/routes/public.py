@@ -279,6 +279,33 @@ async def get_conversation_events(
     return result
 
 
+@app.get('/conversations/user-message-ids/{conversation_id}')
+async def get_user_message_ids(
+    conversation_id: str,
+    x_key_oh: str = Depends(verify_thesis_backend_server),
+) -> Any:
+    from sqlalchemy import select
+
+    from openhands.server.db import database
+    from openhands.server.models import ConversationEvent
+
+    # Use Postgres ->> operator to extract text from JSON
+    source_text = ConversationEvent.c.metadata.op('->>')('source')
+    action_text = ConversationEvent.c.metadata.op('->>')('action')
+
+    query = (
+        select(ConversationEvent.c.event_id)
+        .where(
+            ConversationEvent.c.conversation_id == conversation_id,
+            source_text == 'user',
+            action_text == 'message',
+        )
+        .order_by(ConversationEvent.c.event_id)
+    )
+    rows = await database.fetch_all(query)
+    return [row['event_id'] for row in rows]
+
+
 @app.get('/conversations/list-files-internal/{conversation_id}')
 async def list_files(
     conversation_id: str,
@@ -434,3 +461,82 @@ async def update_empty_titles(
 ) -> dict[str, Any]:
     result = await conversation_module.update_empty_conversation_titles(config)
     return result
+
+
+@app.get('/conversations/search')
+async def get_conversations_with_date_filter(
+    startDate: Optional[str] = None,
+    endDate: Optional[str] = None,
+    limit: int = 50,
+    x_key_oh: str = Depends(verify_thesis_backend_server),
+) -> dict[str, Any]:
+    """Get conversations filtered by date range using database query.
+
+    Args:
+        startDate: ISO 8601 datetime string (e.g., "2025-01-01T00:00:00Z") - filter created_at > startDate
+        endDate: ISO 8601 datetime string (e.g., "2025-12-31T23:59:59Z") - filter created_at < endDate
+        limit: Maximum number of conversations to return
+        x_key_oh: Authentication header
+
+    Returns:
+        dict containing conversation_id and metadata for each conversation
+    """
+    from sqlalchemy import desc, or_, select
+
+    from openhands.server.db import database
+    from openhands.server.models import Conversation
+
+    try:
+        # Build database query with date filters
+        query = select(
+            Conversation.c.conversation_id,
+            Conversation.c.title,
+            Conversation.c.created_at,
+            Conversation.c.metadata,
+        ).where(
+            or_(Conversation.c.status != 'deleted', Conversation.c.status.is_(None))
+        )
+
+        # Add datetime filters - parse ISO string to datetime
+        if startDate:
+            # Parse ISO string to datetime
+            if startDate.endswith('Z'):
+                startDate = startDate.replace('Z', '+00:00')
+            start_dt = datetime.fromisoformat(startDate)
+            start_dt = start_dt.replace(tzinfo=None)
+            query = query.where(Conversation.c.created_at >= start_dt)
+        if endDate:
+            # Parse ISO string to datetime
+            if endDate.endswith('Z'):
+                endDate = endDate.replace('Z', '+00:00')
+            end_dt = datetime.fromisoformat(endDate)
+            end_dt = end_dt.replace(tzinfo=None)
+            query = query.where(Conversation.c.created_at <= end_dt)
+        # Order by created_at desc and limit
+        query = query.order_by(desc(Conversation.c.created_at))
+
+        conversations = await database.fetch_all(query)
+
+        result = {
+            'conversations': [
+                {
+                    'conversation_id': conv.conversation_id,
+                    'title': conv.title
+                    or (conv.metadata.get('title', '') if conv.metadata else ''),
+                    'created_at': conv.created_at.isoformat()
+                    if conv.created_at
+                    else None,
+                }
+                for conv in conversations
+            ],
+            'total_count': len(conversations),
+        }
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f'Error fetching filtered conversations: {str(e)}'
+        )

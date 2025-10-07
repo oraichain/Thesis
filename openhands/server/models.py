@@ -97,3 +97,13 @@ SpaceSectionAction = Table(
     Column('metadata', JSON, nullable=True),
     Column('created_at', DateTime, default=func.now(), nullable=False),
 )
+
+ConversationEvent = Table(
+    'conversation_events',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('conversation_id', String, nullable=False),
+    Column('event_id', Integer, nullable=False),
+    Column('metadata', JSON, nullable=True),
+    Column('created_at', DateTime, default=func.now(), nullable=False),
+)

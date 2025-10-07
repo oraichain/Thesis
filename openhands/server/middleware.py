@@ -372,6 +372,7 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/docs',
             '/openapi.json',
             '/share/',
+            '/api/options/conversations/search',
         ]
 
         self.public_path_patterns = [
@@ -379,6 +380,7 @@ class CheckUserActivationMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations/events/',
             '/api/options/conversations/list-files-internal/',
             '/api/options/conversations/select-file-internal/',
+            '/api/options/conversations/user-message-ids/',
             '/share/',
         ]
 
@@ -443,6 +445,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/options/use-cases',
             '/api/options/use-cases/conversations',
             '/api/options/conversations',
+            '/api/options/conversations/search',
             '/api/options/update-empty-titles',
             '/api/usecases',
             '/docs',
@@ -455,6 +458,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             '/api/options/conversations/events/',
             '/api/options/conversations/list-files-internal/',
             '/api/options/conversations/select-file-internal/',
+            '/api/options/conversations/user-message-ids/',
             '/share/',
         ]
 
