@@ -1,10 +1,12 @@
 import asyncio
+import os
 from concurrent import futures
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Coroutine, Iterable, List
 
 GENERAL_TIMEOUT: int = 15
-EXECUTOR = ThreadPoolExecutor()
+worker_max_workers = int(os.environ.get('WORKER_MAX_WORKERS', 150))
+EXECUTOR = ThreadPoolExecutor(max_workers=worker_max_workers)
 
 
 async def call_sync_from_async(fn: Callable, *args, **kwargs):

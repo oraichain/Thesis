@@ -8,6 +8,7 @@ This module provides context managers to monkey patch HTTP client classes and en
 all sessions are properly closed when operations complete.
 """
 
+import asyncio
 import contextlib
 import weakref
 
@@ -140,6 +141,9 @@ async def ensure_all_sessions_close():
             yield
 
 
+sessions: dict[int, weakref.WeakSet[AsyncOpenAI]] = {}
+
+
 @contextlib.asynccontextmanager
 async def ensure_async_openai_close():
     """
@@ -153,13 +157,17 @@ async def ensure_async_openai_close():
         return
 
     original_function = AsyncOpenAI.__init__
-    sessions: weakref.WeakSet[AsyncOpenAI] = weakref.WeakSet()
+    session_loop_id = id(asyncio.get_running_loop())
+    sessions[session_loop_id] = weakref.WeakSet()
 
     def object_manager_decorator(fn):
         @wraps(fn)
         def wrapped(*args, **kwargs):
             self = args[0]
-            sessions.add(self)
+            current_loop_id = id(asyncio.get_running_loop())
+            if not sessions.get(current_loop_id):
+                sessions[current_loop_id] = weakref.WeakSet()
+                sessions[current_loop_id].add(self)
             return fn(*args, **kwargs)
 
         return wrapped
@@ -174,8 +182,9 @@ async def ensure_async_openai_close():
         AsyncOpenAI.__init__ = original_function
 
         # Close all tracked sessions
-        for session in list(sessions):
-            try:
-                await session.close()
-            except Exception:
-                pass
+        if sessions.get(session_loop_id):
+            for session in list(sessions[session_loop_id]):
+                try:
+                    await session.close()
+                except Exception:
+                    pass
