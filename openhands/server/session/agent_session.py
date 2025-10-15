@@ -240,6 +240,12 @@ class AgentSession:
             end_state.save_to_session(self.sid, self.file_store, self.user_id)
             await self.controller.close()
         if self.runtime is not None:
+            # Deadlock here
+            # EXECUTOR.submit runtime close and in runtime close has call_sync_from_async to clean mcp.
+            # So if the number of workers in EXECUTOR is 1, it will deadlock
+            # because the self.runtime.close is waiting for mcp to be cleaned, and mcp cleaning can not start because not have a worker to start.
+            # When we have multiple conversation, it maybe has deadlock if multiple conversation is closing at the same time
+            # IMPORTANT: Work around by increase number worker in EXECUTOR
             EXECUTOR.submit(self.runtime.close)
         if self.security_analyzer is not None:
             await self.security_analyzer.close()
