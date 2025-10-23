@@ -37,6 +37,7 @@ from openhands.runtime.plugins import (
     JupyterRequirement,
     PluginRequirement,
 )
+from openhands.server.strategy.strategy_client import StrategyServerClient
 from openhands.utils.async_utils import call_async_from_sync
 from openhands.utils.prompt import PromptManager
 
@@ -412,9 +413,11 @@ class CodeActAgent(Agent):
                             {
                                 'message': {
                                     'role': 'assistant',
-                                    'content': accumulated_content
-                                    if accumulated_content
-                                    else None,
+                                    'content': (
+                                        accumulated_content
+                                        if accumulated_content
+                                        else None
+                                    ),
                                     'tool_calls': formatted_tool_calls,
                                 },
                                 'index': 0,
@@ -734,12 +737,73 @@ class CodeActAgent(Agent):
         params['extra_body'] = {'metadata': state.to_llm_metadata(agent_name=self.name)}
         # if chat mode, we need to use the search tools
 
-        params['tools'] = self._select_tools_based_on_mode(research_mode)
+        if self.is_replay:
+            # we don't need deep research tools since we are replaying the script -> save lots of tokens
+            params['tools'] = self._select_tools_based_on_mode(ResearchMode.CHAT)
+        elif self.strategy_id:
+            # follow up because we assume output is final.
+            # writing to file or not -> user can explicitly request to optimize speed
+            params['tools'] = self._select_tools_based_on_mode(ResearchMode.FOLLOW_UP)
+        else:
+            params['tools'] = self._select_tools_based_on_mode(research_mode)
         params['tools'] = check_tools(params['tools'], self.llm.config)
         if self.enable_streaming:
             params['stream_options'] = {'include_usage': True}
         last_message = messages[-1]
-        logger.info(f'Last message: {last_message}')
+
+        # call the tools from the strategy service directly via APIs, and finish the conversation
+        # has_invoked_strategy is used because we target one-time conversation, not a long-running conversation
+        if self.strategy_id and not self.has_invoked_strategy:
+            logger.info(f'Has predefined strategy: {self.strategy_id}')
+            strategy_server_client = StrategyServerClient()
+            strategy_result = call_async_from_sync(
+                strategy_server_client.get_strategy_final_output,
+                120,
+                self.strategy_id,
+            )
+            if strategy_result:
+                logger.info(f'Strategy result: {strategy_result[:500]}')
+                self.has_invoked_strategy = True
+                return [
+                    AgentFinishAction(
+                        outputs=strategy_result, final_thought=str(strategy_result)
+                    )
+                ]
+            # strategy_id = call_async_from_sync(
+            #     strategy_server_client.create_strategy,
+            #     GENERAL_TIMEOUT,
+            #     self.blueprint_id,
+            # )
+            # if strategy_id:
+            #     logger.info(f'Created strategy: {strategy_id}')
+            #     # execute the strategy
+            #     response = call_async_from_sync(
+            #         strategy_server_client.execute_strategy,
+            #         60,
+            #         strategy_id,
+            #         latest_user_message.content.strip(),
+            #     )
+            #     if response:
+            #         # # override the messages with the strategy result, and force the LLM to process and finish the conversation
+            #         # strategy_result_message_action = MessageAction(
+            #         #     content=str(response),
+            #         #     enable_think=False,
+            #         # )
+            #         # finish_message_action = MessageAction(
+            #         #     content='Based on the user request and the data we have gathered, do not think or use any other data or tools, give me the final result.',
+            #         #     enable_think=False,
+            #         # )
+            #         # # make sure if the LLM loops multiple times, it will not call the strategy again
+            #         # self.has_invoked_strategy = True
+            #         # assume that the strategy result is final and the user request is answered
+            #         # only return the finish action
+            #         finish_message_action = AgentFinishAction(
+            #             outputs=response if isinstance(response, dict) else {'outputs': response},
+            #             final_thought=str(response),
+            #         )
+            #         return [finish_message_action]
+            else:
+                logger.warning('Failed to create strategy because no strategy id found')
 
         response = None
         if (
