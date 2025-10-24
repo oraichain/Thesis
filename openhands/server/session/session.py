@@ -466,7 +466,7 @@ class Session:
             if user_message:
                 strategy_id = (
                     await strategy_server_client.create_and_execute_strategy_background(
-                        blueprint_id, user_message
+                        blueprint_id, user_message, self.sid
                     )
                 )
                 self.logger.info(

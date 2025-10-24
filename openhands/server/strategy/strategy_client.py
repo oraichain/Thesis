@@ -76,13 +76,17 @@ class StrategyServerClient:
             return None
 
     async def create_and_execute_strategy_background(
-        self, blueprint_id: str, user_prompt: str
+        self, blueprint_id: str, user_prompt: str, session_id: str
     ) -> str | None:
         try:
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 strategy = await client.post(
                     f'{self.strategy_server_url}/strategy/create-and-execute/',
-                    json={'blueprint_id': blueprint_id, 'user_prompt': user_prompt},
+                    json={
+                        'blueprint_id': blueprint_id,
+                        'user_prompt': user_prompt,
+                        'session_id': session_id,
+                    },
                 )
                 if strategy.status_code != 200:
                     logger.error(
