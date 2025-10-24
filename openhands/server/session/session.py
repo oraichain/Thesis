@@ -245,6 +245,7 @@ class Session:
                 self.space_section_id,
                 user_prompt,
                 initial_message,
+                system_prompt,
             )
 
             # fallback to using replay actions if no strategy id is found
@@ -445,6 +446,7 @@ class Session:
         space_section_id: int,
         user_prompt: str | None,
         initial_message: MessageAction | None,
+        system_prompt: str | None,
     ) -> str | None:
         self.logger.info(
             f'Getting matching blueprint id for space {space_id} and section {space_section_id}'
@@ -466,7 +468,7 @@ class Session:
             if user_message:
                 strategy_id = (
                     await strategy_server_client.create_and_execute_strategy_background(
-                        blueprint_id, user_message, self.sid
+                        blueprint_id, user_message, self.sid, system_prompt
                     )
                 )
                 self.logger.info(

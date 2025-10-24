@@ -76,7 +76,11 @@ class StrategyServerClient:
             return None
 
     async def create_and_execute_strategy_background(
-        self, blueprint_id: str, user_prompt: str, session_id: str
+        self,
+        blueprint_id: str,
+        user_prompt: str,
+        session_id: str,
+        system_prompt: str | None,
     ) -> str | None:
         try:
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -86,6 +90,7 @@ class StrategyServerClient:
                         'blueprint_id': blueprint_id,
                         'user_prompt': user_prompt,
                         'session_id': session_id,
+                        'system_prompt': system_prompt if system_prompt else '',
                     },
                 )
                 if strategy.status_code != 200:
