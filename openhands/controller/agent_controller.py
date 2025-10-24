@@ -449,21 +449,9 @@ class AgentController:
                 AgentState.REJECTED,
             ):
                 # Forward the event to delegate and skip parent processing
-                try:
-                    loop = asyncio.get_running_loop()
-                    asyncio.run_coroutine_threadsafe(
-                        self.delegate._on_event(event), loop
-                    )
-                except RuntimeError:
-                    # No running loop, try to get or create one
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_closed():
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                        loop.run_until_complete(self.delegate._on_event(event))
-                    except Exception as e:
-                        logger.error(f'Error forwarding event to delegate: {e}')
+                asyncio.get_event_loop().run_until_complete(
+                    self.delegate._on_event(event)
+                )
                 return
             else:
                 # delegate is done or errored, so end it
@@ -471,19 +459,20 @@ class AgentController:
                 return
 
         # continue parent processing only if there's no active delegate
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.run_coroutine_threadsafe(self._on_event(event), loop)
-        except RuntimeError:
-            # No running loop, try to get or create one
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._on_event(event))
-            except Exception as e:
-                logger.error(f'Error processing event: {e}')
+        asyncio.get_event_loop().run_until_complete(self._on_event(event))
+        # try:
+        #     loop = asyncio.get_running_loop()
+        #     asyncio.run_coroutine_threadsafe(self._on_event(event), loop)
+        # except RuntimeError:
+        #     # No running loop, try to get or create one
+        #     try:
+        #         loop = asyncio.get_event_loop()
+        #         if loop.is_closed():
+        #             loop = asyncio.new_event_loop()
+        #             asyncio.set_event_loop(loop)
+        #         loop.run_until_complete(self._on_event(event))
+        #     except Exception as e:
+        #         logger.error(f'Error processing event: {e}')
 
         # I want to
 

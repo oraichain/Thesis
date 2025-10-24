@@ -769,39 +769,6 @@ class CodeActAgent(Agent):
                         outputs=strategy_result, final_thought=str(strategy_result)
                     )
                 ]
-            # strategy_id = call_async_from_sync(
-            #     strategy_server_client.create_strategy,
-            #     GENERAL_TIMEOUT,
-            #     self.blueprint_id,
-            # )
-            # if strategy_id:
-            #     logger.info(f'Created strategy: {strategy_id}')
-            #     # execute the strategy
-            #     response = call_async_from_sync(
-            #         strategy_server_client.execute_strategy,
-            #         60,
-            #         strategy_id,
-            #         latest_user_message.content.strip(),
-            #     )
-            #     if response:
-            #         # # override the messages with the strategy result, and force the LLM to process and finish the conversation
-            #         # strategy_result_message_action = MessageAction(
-            #         #     content=str(response),
-            #         #     enable_think=False,
-            #         # )
-            #         # finish_message_action = MessageAction(
-            #         #     content='Based on the user request and the data we have gathered, do not think or use any other data or tools, give me the final result.',
-            #         #     enable_think=False,
-            #         # )
-            #         # # make sure if the LLM loops multiple times, it will not call the strategy again
-            #         # self.has_invoked_strategy = True
-            #         # assume that the strategy result is final and the user request is answered
-            #         # only return the finish action
-            #         finish_message_action = AgentFinishAction(
-            #             outputs=response if isinstance(response, dict) else {'outputs': response},
-            #             final_thought=str(response),
-            #         )
-            #         return [finish_message_action]
             else:
                 logger.warning('Failed to create strategy because no strategy id found')
 
