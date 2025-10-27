@@ -30,6 +30,7 @@ from openhands.llm.llm import LLM
 from openhands.server.mcp_cache import mcp_tools_cache
 from openhands.server.session.agent_session import AgentSession
 from openhands.server.settings import Settings
+from openhands.server.strategy.strategy_client import StrategyServerClient
 from openhands.storage.database import db_file_store
 from openhands.storage.files import FileStore
 
@@ -235,13 +236,27 @@ class Session:
 
         runtime_max_workers = int(os.getenv('RUNTIME_MAX_WORKERS') or 5)
         if self.space_id and self.space_section_id:
-            replay_actions = db_file_store.get_replay_actions(
-                self.space_id, self.space_section_id
+            self.logger.info(
+                f'Getting matching blueprint id for space {self.space_id} and section {self.space_section_id}'
             )
-            if replay_actions and len(replay_actions) > 0:
-                agent.set_replay_actions(replay_actions)
-                agent.set_rerun_section(True)
-                runtime_max_workers = min(runtime_max_workers, len(replay_actions))
+            strategy_id = await self.pre_execute_strategy(
+                agent,
+                self.space_id,
+                self.space_section_id,
+                user_prompt,
+                initial_message,
+                system_prompt,
+            )
+
+            # fallback to using replay actions if no strategy id is found
+            if not strategy_id:
+                replay_actions = db_file_store.get_replay_actions(
+                    self.space_id, self.space_section_id
+                )
+                if replay_actions and len(replay_actions) > 0:
+                    agent.set_replay_actions(replay_actions)
+                    agent.set_rerun_section(True)
+                    runtime_max_workers = min(runtime_max_workers, len(replay_actions))
 
         agent.set_mcp_tools(mcp_tools)
         agent.set_search_tools(search_tools)
@@ -261,6 +276,8 @@ class Session:
             agent.set_output_config(output_config)
         if self.space_id:
             agent.set_space_id(self.space_id)
+        if self.space_section_id:
+            agent.set_space_section_id(self.space_section_id)
         if self.thread_follow_up:
             agent.set_thread_follow_up(self.thread_follow_up)
 
@@ -421,3 +438,47 @@ class Session:
         asyncio.run_coroutine_threadsafe(
             self._send_status_message(msg_type, id, message), self.loop
         )
+
+    async def pre_execute_strategy(
+        self,
+        agent: Agent,
+        space_id: int,
+        space_section_id: int,
+        user_prompt: str | None,
+        initial_message: MessageAction | None,
+        system_prompt: str | None,
+    ) -> str | None:
+        self.logger.info(
+            f'Getting matching blueprint id for space {space_id} and section {space_section_id}'
+        )
+        strategy_server_client = StrategyServerClient()
+        # try finding matching blueprint id to enable fast query workflow
+        blueprint_id = await strategy_server_client.get_matching_blueprint_id(
+            space_id, space_section_id
+        )
+        if blueprint_id:
+            user_message = (
+                user_prompt
+                if user_prompt
+                else initial_message.content
+                if initial_message
+                else ''
+            )
+            # no need to wait, we will view the result during step
+            if user_message:
+                strategy_id = (
+                    await strategy_server_client.create_and_execute_strategy_background(
+                        blueprint_id, user_message, self.sid, system_prompt
+                    )
+                )
+                self.logger.info(
+                    f'Pre-executing strategy: {strategy_id} with user message: {user_message}'
+                )
+                if strategy_id:
+                    agent.set_strategy_id(strategy_id)
+                    return strategy_id
+                self.logger.error(
+                    f'Error creating and executing strategy: {strategy_id}'
+                )
+                return None
+        return None

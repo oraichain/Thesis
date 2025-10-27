@@ -498,6 +498,19 @@ class AgentController:
 
         # continue parent processing only if there's no active delegate
         asyncio.get_event_loop().run_until_complete(self._on_event(event))
+        # try:
+        #     loop = asyncio.get_running_loop()
+        #     asyncio.run_coroutine_threadsafe(self._on_event(event), loop)
+        # except RuntimeError:
+        #     # No running loop, try to get or create one
+        #     try:
+        #         loop = asyncio.get_event_loop()
+        #         if loop.is_closed():
+        #             loop = asyncio.new_event_loop()
+        #             asyncio.set_event_loop(loop)
+        #         loop.run_until_complete(self._on_event(event))
+        #     except Exception as e:
+        #         logger.error(f'Error processing event: {e}')
 
         # I want to
 
