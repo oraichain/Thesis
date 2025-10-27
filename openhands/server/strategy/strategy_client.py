@@ -11,8 +11,9 @@ load_dotenv()
 class StrategyServerClient:
     def __init__(
         self,
-        strategy_server_url: str = os.getenv('THESIS_STRATEGY_SERVER_URL')
-        or 'http://localhost:9000',
+        strategy_server_url: str = (
+            os.getenv('THESIS_STRATEGY_SERVER_URL') or 'http://localhost:9000'
+        ).rstrip('/'),
     ):
         self.strategy_server_url = strategy_server_url
 
