@@ -91,6 +91,10 @@ REASONING_EFFORT_SUPPORTED_MODELS = [
     'o3-mini',
 ]
 
+MODELS_REMOVE_TEMPERATURE = [
+    'claude-haiku-4-5',
+]
+
 MODELS_WITHOUT_STOP_WORDS = [
     'o1-mini',
     'o1-preview',
@@ -444,6 +448,14 @@ class LLM(RetryMixin, DebugMixin):
             kwargs.pop(
                 'temperature'
             )  # temperature is not supported for reasoning models
+        if (
+            self.config.model.lower() in MODELS_REMOVE_TEMPERATURE
+            or self.config.model.split('/')[-1] in MODELS_REMOVE_TEMPERATURE
+        ):
+            try:
+                kwargs.pop('temperature')
+            except Exception:
+                pass
         # Azure issue: https://github.com/All-Hands-AI/OpenHands/issues/6777
         if self.config.model.startswith('azure'):
             kwargs['max_tokens'] = self.config.max_output_tokens
