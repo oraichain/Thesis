@@ -1,6 +1,7 @@
 import os
 from contextlib import contextmanager
 
+import psycopg
 from psycopg_pool import ConnectionPool
 
 from openhands.core.logger import openhands_logger as logger
@@ -49,6 +50,7 @@ class DBConnectionPool:
                     timeout=10.0,  # Pool operation timeout
                     max_idle=300.0,  # 5 minutes max idle time
                     reconnect_timeout=30.0,  # Reconnection timeout
+                    open=True,
                 )
                 logger.info('Database connection pool initialized successfully')
             except Exception as e:
@@ -79,6 +81,10 @@ class DBConnectionPool:
             if not conn:
                 raise ConnectionError('Failed to get database connection from pool')
             yield conn
+            # For successful operations, ensure transaction is closed
+            # If already committed, this is a no-op; otherwise rollback to close transaction
+            if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                conn.rollback()
         except Exception:
             if conn:
                 try:
@@ -92,11 +98,27 @@ class DBConnectionPool:
 
     def release_connection(self, conn):
         """Return a connection to the pool."""
-        if self._pool and conn:
+        try:
+            # CRITICAL FIX: Check transaction status and rollback if needed
+            # In psycopg3, transaction_status is directly accessible
+            if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                logger.warning(
+                    f'Connection in {conn.info.transaction_status} state, forcing rollback before returning to pool'
+                )
+                conn.rollback()
+        except Exception as cleanup_error:
+            logger.error(f'Error cleaning up connection: {cleanup_error}')
+            # Try to rollback anyway as last resort
             try:
-                self._pool.putconn(conn)
-            except Exception as e:
-                logger.error(f'Failed to release connection: {str(e)}')
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            if self._pool and conn:
+                try:
+                    self._pool.putconn(conn)
+                except Exception as e:
+                    logger.error(f'Failed to release connection: {str(e)}')
 
     def close_pool(self):
         """Close the connection pool."""

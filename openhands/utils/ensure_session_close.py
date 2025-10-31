@@ -8,6 +8,7 @@ This module provides context managers to monkey patch HTTP client classes and en
 all sessions are properly closed when operations complete.
 """
 
+import asyncio
 import contextlib
 import weakref
 
@@ -18,12 +19,22 @@ try:
 except ImportError:
     AIOHTTP_AVAILABLE = False
 
+
+try:
+    from openai import AsyncOpenAI
+
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
 try:
     import httpx
 
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
+
+from functools import wraps
 
 
 @contextlib.asynccontextmanager
@@ -128,3 +139,52 @@ async def ensure_all_sessions_close():
     async with ensure_aiohttp_close():
         with ensure_httpx_close():
             yield
+
+
+sessions: dict[int, weakref.WeakSet[AsyncOpenAI]] = {}
+
+
+@contextlib.asynccontextmanager
+async def ensure_async_openai_close():
+    """
+    Context manager to ensure all aiohttp.ClientSession instances are properly closed.
+
+    This patches aiohttp.ClientSession to track instances and ensures they are
+    closed when the context exits.
+    """
+    if not OPENAI_AVAILABLE:
+        yield
+        return
+
+    original_function = AsyncOpenAI.__init__
+    session_loop_id = id(asyncio.get_running_loop())
+    sessions[session_loop_id] = weakref.WeakSet()
+
+    def object_manager_decorator(fn):
+        @wraps(fn)
+        def wrapped(*args, **kwargs):
+            self = args[0]
+            current_loop_id = id(asyncio.get_running_loop())
+            if not sessions.get(current_loop_id):
+                sessions[current_loop_id] = weakref.WeakSet()
+                sessions[current_loop_id].add(self)
+            return fn(*args, **kwargs)
+
+        return wrapped
+
+    # Monkey patch aiohttp.ClientSession
+    AsyncOpenAI.__init__ = object_manager_decorator(AsyncOpenAI.__init__)
+
+    try:
+        yield
+    finally:
+        # Restore original class
+        AsyncOpenAI.__init__ = original_function
+
+        # Close all tracked sessions
+        if sessions.get(session_loop_id):
+            for session in list(sessions[session_loop_id]):
+                try:
+                    await session.close()
+                except Exception:
+                    pass

@@ -20,38 +20,42 @@ class DatabaseFileStore(FileStore):
         if path == 'settings.json':
             return
 
+        parsed_path = parse_conversation_path(path)
+        if parsed_path is None:
+            logger.error(f'Failed to parse conversation path: {path}')
+            return
+
+        user_id = parsed_path['user_id']
+        session_id = parsed_path['session_id']
+        event_id = parsed_path['event_id']
+        path_type = parsed_path['type']
+
+        if path_type not in ('events', 'metadata', 'settings', 'agent_state'):
+            logger.warning(f'Unsupported path type for write: {path_type}')
+            return
+
+        if path_type == 'settings' and not user_id:
+            logger.warning('Cannot write settings without user_id')
+            return
+
         try:
-            parsed_path = parse_conversation_path(path)
-            if parsed_path is None:
-                logger.error(f'Failed to parse conversation path: {path}')
-                return
-
-            user_id = parsed_path['user_id']
-            session_id = parsed_path['session_id']
-            event_id = parsed_path['event_id']
-            path_type = parsed_path['type']
-
             with db_pool.get_connection_context() as conn:
                 with conn.cursor() as cursor:
                     if path_type == 'events':
                         self._write_event(cursor, session_id, event_id, contents)
                     elif path_type == 'metadata':
                         self._write_metadata(cursor, session_id, contents, user_id)
-                    elif path_type == 'settings' and user_id:
+                    elif path_type == 'settings':
                         self._write_user_setting(cursor, user_id, contents)
                     elif path_type == 'agent_state':
                         self._write_agent_state(cursor, session_id, contents, user_id)
-                    else:
-                        logger.warning(f'Unsupported path type for write: {path_type}')
-                        return
 
-                    conn.commit()
-                    logger.debug(
-                        f'Successfully wrote {path_type} for session {session_id}'
-                    )
+                conn.commit()
+                logger.debug(f'Successfully wrote {path_type} for session {session_id}')
 
         except Exception as e:
             logger.error(f'Error writing to database for path {path}: {str(e)}')
+            # Connection will be automatically rolled back in context manager
             raise
 
     def _write_event(
@@ -231,32 +235,38 @@ class DatabaseFileStore(FileStore):
         """Read contents from database based on path type."""
         if path == 'settings.json':
             return '{}'
+
+        parsed_path = parse_conversation_path(path)
+        if parsed_path is None:
+            logger.error(f'Failed to parse conversation path: {path}')
+            raise FileNotFoundError(f'Invalid path format: {path}')
+
+        session_id = parsed_path['session_id']
+        event_id = parsed_path['event_id']
+        path_type = parsed_path['type']
+
+        if path_type not in ('events', 'metadata', 'settings', 'agent_state'):
+            logger.warning(f'Unsupported path type for read: {path_type}')
+            raise FileNotFoundError(f'Unsupported path type: {path_type}')
+
         try:
-            parsed_path = parse_conversation_path(path)
-            if parsed_path is None:
-                logger.error(f'Failed to parse conversation path: {path}')
-                raise FileNotFoundError(f'Invalid path format: {path}')
-
-            session_id = parsed_path['session_id']
-            event_id = parsed_path['event_id']
-            path_type = parsed_path['type']
-
             with db_pool.get_connection_context() as conn:
                 with conn.cursor() as cursor:
                     if path_type == 'events':
-                        return self._read_event(cursor, session_id, event_id)
+                        result = self._read_event(cursor, session_id, event_id)
                     elif path_type == 'metadata':
                         user_id = parsed_path['user_id']
-                        return self._read_metadata(cursor, session_id, user_id)
+                        result = self._read_metadata(cursor, session_id, user_id)
                     elif path_type == 'settings' and parsed_path['user_id']:
-                        return self._read_user_setting(cursor, parsed_path['user_id'])
+                        result = self._read_user_setting(cursor, parsed_path['user_id'])
                     elif path_type == 'agent_state':
-                        return self._read_agent_state(
+                        result = self._read_agent_state(
                             cursor, session_id, parsed_path['user_id']
                         )
                     else:
-                        logger.warning(f'Unsupported path type for read: {path_type}')
-                        raise FileNotFoundError(f'Unsupported path type: {path_type}')
+                        raise FileNotFoundError('Invalid path configuration')
+
+                return result
 
         except Exception as e:
             logger.error(f'Error reading from database for path {path}: {str(e)}')
@@ -369,16 +379,20 @@ class DatabaseFileStore(FileStore):
 
     def delete(self, path: str) -> None:
         """Delete data from database based on path type."""
+        parsed_path = parse_conversation_path(path)
+        if parsed_path is None:
+            logger.error(f'Failed to parse conversation path: {path}')
+            return
+
+        session_id = parsed_path['session_id']
+        event_id = parsed_path['event_id']
+        path_type = parsed_path['type']
+
+        if path_type not in ('events', 'metadata', 'agent_state'):
+            logger.warning(f'Unsupported path type for delete: {path_type}')
+            return
+
         try:
-            parsed_path = parse_conversation_path(path)
-            if parsed_path is None:
-                logger.error(f'Failed to parse conversation path: {path}')
-                return
-
-            session_id = parsed_path['session_id']
-            event_id = parsed_path['event_id']
-            path_type = parsed_path['type']
-
             with db_pool.get_connection_context() as conn:
                 with conn.cursor() as cursor:
                     if path_type == 'events':
@@ -390,14 +404,11 @@ class DatabaseFileStore(FileStore):
                         self._delete_agent_state(
                             cursor, session_id, parsed_path['user_id']
                         )
-                    else:
-                        logger.warning(f'Unsupported path type for delete: {path_type}')
-                        return
 
-                    conn.commit()
-                    logger.debug(
-                        f'Successfully deleted {path_type} for session {session_id}'
-                    )
+                conn.commit()
+                logger.debug(
+                    f'Successfully deleted {path_type} for session {session_id}'
+                )
 
         except Exception as e:
             logger.error(f'Error deleting from database for path {path}: {str(e)}')
