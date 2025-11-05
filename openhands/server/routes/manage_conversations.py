@@ -265,7 +265,7 @@ async def new_conversation(request: Request, data: InitSessionRequest):
     mcp_disable = data.mcp_disable
     output_config: dict | None = None
 
-    if space_id is not None:
+    if space_id is not None and system_prompt is None:
         # get system prompt from thesis auth server
         system_prompt = await get_system_prompt_by_space_id_from_thesis_auth_server(
             int(space_id), bearer_token, x_device_id
