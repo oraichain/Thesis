@@ -24,6 +24,9 @@ from openhands.server.modules.space import SpaceModule
 from openhands.server.routes.integration.join_conversation_client import (
     SocketStreamClient,
 )
+from openhands.server.routes.integration.listen_conversation import (
+    ListenConversationClient,
+)
 from openhands.server.routes.manage_conversations import (
     InitSessionRequest,
     get_default_conversation_title,
@@ -638,6 +641,8 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
             jwt_token=jwt_token,
             api_base_url='http://localhost:3000',  # TODO: make the port configurable
             research_mode=ResearchMode(data.research_mode),
+            latest_event_id=data.latest_event_id,
+            x_device_id=data.x_device_id,
         )
 
         async def stream_with_cancellation(
@@ -670,6 +675,171 @@ async def join_conversation(request: Request, data: JoinConversationIntegrationR
             stream_with_cancellation(
                 data.user_prompt, ResearchMode(data.research_mode)
             ),
+            media_type='application/json',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Content-Type': 'text/event-stream',
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f'Failed to start streaming: {str(e)}'
+        )
+
+
+class ListenConversationIntegrationRequest(BaseModel):
+    conversation_id: str | None = Field(
+        None,
+        description='ID of the existing conversation to join',
+        example='conv_abc123def456',
+    )
+    latest_event_id: int | None = Field(
+        None,
+        description='ID of the latest event to resume from',
+        example=123,
+    )
+    x_device_id: str | None = Field(
+        None,
+        description='Device ID to use for the conversation',
+        example='123',
+    )
+
+
+@conversation_router.post(
+    '/listen-conversation',
+    summary='Listen to Existing Conversation',
+    description='Listen to an existing conversation using conversation ID and API key authentication. Allows real-time participation in ongoing conversations with streaming responses. The user prompt becomes the next message sent to the AI.\n\n**Important for streaming:** Use the `--no-buffer` flag with cURL to enable real-time streaming output.',
+    response_description='Streaming response with real-time conversation updates',
+    responses={
+        200: {
+            'description': 'Successfully listened to conversation with streaming response',
+            'content': {
+                'application/json': {
+                    'schema': {
+                        'type': 'string',
+                        'description': 'Server-Sent Events stream with real-time conversation updates. Events are serialized using event_to_dict() and sent as SSE format.',
+                        'examples': [
+                            {
+                                'type': 'oh_event',
+                                'data': {
+                                    'id': 1,
+                                    'timestamp': '2024-01-15T10:45:00.123Z',
+                                    'source': 'user',
+                                    'message': 'Please review this code',
+                                    'action': 'message',
+                                    'args': {
+                                        'content': 'Please review this code',
+                                        'image_urls': None,
+                                        'wait_for_response': False,
+                                    },
+                                },
+                            },
+                            {
+                                'type': 'oh_event',
+                                'data': {
+                                    'id': 2,
+                                    'timestamp': '2024-01-15T10:45:30.456Z',
+                                    'source': 'agent',
+                                    'message': "I'll analyze the code for you...",
+                                    'action': 'message',
+                                    'args': {
+                                        'content': "I'll analyze the code for you. Let me start by examining the structure...",
+                                        'wait_for_response': False,
+                                    },
+                                },
+                            },
+                            {
+                                'type': 'oh_event',
+                                'data': {
+                                    'id': 3,
+                                    'timestamp': '2024-01-15T10:45:35.789Z',
+                                    'source': 'agent',
+                                    'observation': 'agent_state_changed',
+                                    'content': '',
+                                    'extras': {
+                                        'agent_state': 'RUNNING',
+                                        'reason': 'Starting code analysis',
+                                    },
+                                    'success': True,
+                                },
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+        400: {
+            'description': 'Missing required fields (conversation_id, research_mode)',
+            'model': ConversationErrorResponse,
+        },
+        401: {
+            'description': 'Invalid or missing Bearer token in Authorization header',
+            'model': FastAPIUnauthorizedErrorResponse,
+        },
+        404: {
+            'description': 'Conversation not found',
+            'model': FastAPIResourceNotFoundErrorResponse,
+        },
+        500: {
+            'description': 'Failed to establish streaming connection',
+            'model': ConversationErrorResponse,
+        },
+    },
+)
+async def listen_conversation(
+    request: Request, data: ListenConversationIntegrationRequest
+):
+    if not data.conversation_id:
+        raise HTTPException(
+            status_code=400, detail='Missing required field: conversation_id'
+        )
+
+    authorization = request.headers.get('Authorization')
+    # Parse Bearer token from Authorization header
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(
+            status_code=401, detail='Authorization header with Bearer token is required'
+        )
+
+    jwt_token = authorization[7:]  # Remove "Bearer " prefix
+    if not jwt_token.strip():
+        raise HTTPException(status_code=401, detail='API key cannot be empty')
+
+    try:
+        client = ListenConversationClient()
+        # close old session if exists before connecting to new session
+        await client.connect(
+            conversation_id=data.conversation_id,
+            jwt_token=jwt_token,
+            api_base_url='http://localhost:3000',  # TODO: make the port configurable
+            latest_event_id=data.latest_event_id,
+            x_device_id=data.x_device_id,
+        )
+
+        async def stream_with_cancellation():
+            """Stream wrapper that monitors client disconnection"""
+            try:
+                async for chunk in client.stream():
+                    # Check if client disconnected
+                    if await request.is_disconnected():
+                        # Signal cancellation to client and cleanup
+                        client.cancel()
+                        break
+                    yield chunk
+            except Exception as e:
+                logger.error(f'Stream error: {str(e)}')
+                yield json.dumps(
+                    {
+                        'type': 'error',
+                        'message': 'Streaming connection ended unexpectedly',
+                    }
+                )
+                client.cancel()  # Or cleanup
+                await request.close()
+
+        return StreamingResponse(
+            stream_with_cancellation(),
             media_type='application/json',
             headers={
                 'Cache-Control': 'no-cache',
