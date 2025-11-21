@@ -93,6 +93,9 @@ REASONING_EFFORT_SUPPORTED_MODELS = [
 
 MODELS_REMOVE_TEMPERATURE = [
     'claude-haiku-4-5',
+    'claude-sonnet-4-5',
+    'claude-3-7-sonnet-20250219',
+    'claude-3-7-sonnet',
 ]
 
 MODELS_WITHOUT_STOP_WORDS = [
