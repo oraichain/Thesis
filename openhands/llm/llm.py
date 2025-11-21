@@ -199,6 +199,10 @@ class LLM(RetryMixin, DebugMixin):
         # set up the completion function
         kwargs = self.get_litellm_kwargs()
 
+        # Token efficient tools for claude-3-7-sonnet-20250219: https://docs.anthropic.com/en/docs/build-with-claude/tool-use/token-efficient-tool-use
+        if self.config.model == 'claude-3-7-sonnet-20250219':
+            kwargs['anthropic-beta'] = 'token-efficient-tools-2025-02-19'
+
         self._completion = partial(
             litellm_completion,
             model=self.config.model,
