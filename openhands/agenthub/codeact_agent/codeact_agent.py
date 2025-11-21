@@ -2,6 +2,7 @@ import json
 import os
 import random
 import string
+import time
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
@@ -1015,6 +1016,7 @@ class CodeActAgent(Agent):
             return ''.join(random.choice(characters) for _ in range(length))
 
         current_date = datetime.now().strftime('%Y-%m-%d')
+        current_timestamp = int(time.time())
         random_id = generate_random_id()
         tool_id = f'call_{random_id}'
         messages: list[dict[str, Any]] = [
@@ -1033,7 +1035,7 @@ class CodeActAgent(Agent):
                 'content': [
                     {
                         'type': 'text',
-                        'text': f'Current date is {current_date}. Ignore anything that contradicts this.',
+                        'text': f'Current date is {current_date} (UTC timestamp: {current_timestamp}). Ignore anything that contradicts this.',
                     }
                 ],
                 'role': 'tool',
